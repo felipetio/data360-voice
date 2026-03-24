@@ -2,13 +2,36 @@
 
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+def _int_env(key: str, default: int, min_val: int = 1) -> int:
+    raw = os.getenv(key, str(default))
+    try:
+        val = int(raw)
+    except ValueError:
+        val = default
+    return max(val, min_val)
+
+
+def _float_env(key: str, default: float, min_val: float = 0.0) -> float:
+    raw = os.getenv(key, str(default))
+    try:
+        val = float(raw)
+    except ValueError:
+        val = default
+    return max(val, min_val)
+
+
 BASE_URL = os.getenv("DATA360_BASE_URL", "https://data360api.worldbank.org")
 
 # HTTP client settings
-REQUEST_TIMEOUT = int(os.getenv("DATA360_REQUEST_TIMEOUT", "30"))
-MAX_RETRIES = int(os.getenv("DATA360_MAX_RETRIES", "3"))
-RETRY_BACKOFF_BASE = float(os.getenv("DATA360_RETRY_BACKOFF_BASE", "1.0"))
+REQUEST_TIMEOUT = _float_env("DATA360_REQUEST_TIMEOUT", 30.0, min_val=1.0)
+MAX_RETRIES = _int_env("DATA360_MAX_RETRIES", 3, min_val=0)
+RETRY_BACKOFF_BASE = _float_env("DATA360_RETRY_BACKOFF_BASE", 1.0, min_val=0.0)
 
-# Pagination settings
-PAGE_SIZE = 1000  # Max records per API call
-MAX_RECORDS = 5000  # Hard cap per tool call
+# Pagination settings (fixed caps, not user-configurable)
+PAGE_SIZE = 1000
+MAX_RECORDS = 5000

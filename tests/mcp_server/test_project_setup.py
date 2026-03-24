@@ -36,7 +36,7 @@ def test_config_defaults():
     assert BASE_URL == "https://data360api.worldbank.org"
     assert PAGE_SIZE == 1000
     assert MAX_RECORDS == 5000
-    assert REQUEST_TIMEOUT == 30
+    assert REQUEST_TIMEOUT == 30.0
     assert MAX_RETRIES == 3
     assert RETRY_BACKOFF_BASE == 1.0
 
