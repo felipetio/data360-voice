@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 from typing import Any
 
 import httpx
@@ -189,6 +190,9 @@ class Data360Client:
         """Resolve a database_id to its human-readable name via lightweight search."""
         if database_id in self._db_name_cache:
             return self._db_name_cache[database_id]
+        # Validate database_id to prevent OData filter injection
+        if not re.fullmatch(r"[A-Za-z0-9_]+", database_id):
+            return None
         body = {"search": "*", "filter": f"series_description/database_id eq '{database_id}'", "top": 1}
         result = await self._request("POST", "/data360/searchv2", json_body=body)
         if isinstance(result, dict) and result.get("success") is False:

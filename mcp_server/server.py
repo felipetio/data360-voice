@@ -1,6 +1,7 @@
 """FastMCP server with Data360 API tools."""
 
 import logging
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastmcp import FastMCP
@@ -9,9 +10,24 @@ from mcp_server.data360_client import Data360Client
 
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("data360-voice", instructions="World Bank Data360 climate and development data tools.")
+_client: Data360Client | None = None
 
-_client = Data360Client()
+
+@asynccontextmanager
+async def _lifespan(server: FastMCP):
+    global _client
+    _client = Data360Client()
+    try:
+        yield
+    finally:
+        await _client.close()
+
+
+mcp = FastMCP(
+    "data360-voice",
+    instructions="World Bank Data360 climate and development data tools.",
+    lifespan=_lifespan,
+)
 
 
 @mcp.tool()
