@@ -31,23 +31,25 @@ async def search_indicators(
         Dict with success status, data list, total_count, returned_count, and truncated flag.
     """
     try:
-        kwargs: dict[str, Any] = {"search": query, "top": top, "skip": skip}
+        body: dict[str, Any] = {"search": query, "top": top, "skip": skip, "count": True}
         if filter is not None:
-            kwargs["filter"] = filter
+            body["filter"] = filter
 
         async with Data360Client() as client:
-            response = await client.post("/data360/searchv2", **kwargs)
+            response = await client._request("POST", "/data360/searchv2", json_body=body)
 
-        if not response.get("success", False):
+        if isinstance(response, dict) and response.get("success") is False:
             return response
 
-        results = response.get("data", {}).get("results", [])
+        results = response.get("value", [])
+        total_count = response.get("@odata.count", len(results))
+        returned_count = len(results)
         return {
             "success": True,
             "data": results,
-            "total_count": len(results),
-            "returned_count": len(results),
-            "truncated": False,
+            "total_count": total_count,
+            "returned_count": returned_count,
+            "truncated": total_count > returned_count,
         }
     except Exception as exc:
         logger.error("search_indicators failed: %s", exc)
