@@ -321,6 +321,42 @@ class TestDbNameCache:
         assert client._db_name_cache["X"] == "New"
 
 
+    @pytest.mark.asyncio
+    async def test_resolve_rejects_single_quote_injection(self):
+        """resolve_db_name rejects database_id with single quotes (OData injection)."""
+        client = Data360Client()
+        mock_http = _make_mock_client()
+        client._client = mock_http
+
+        result = await client.resolve_db_name("WB_WDI'; drop table x; --")
+        assert result is None
+        mock_http.request.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_resolve_rejects_special_characters(self):
+        """resolve_db_name rejects database_id with spaces or special chars."""
+        client = Data360Client()
+        mock_http = _make_mock_client()
+        client._client = mock_http
+
+        for bad_id in ["WB WDI", "WB-WDI", "WB/WDI", "WB.WDI", ""]:
+            result = await client.resolve_db_name(bad_id)
+            assert result is None
+        mock_http.request.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_resolve_accepts_valid_database_id(self):
+        """resolve_db_name accepts alphanumeric + underscore database IDs."""
+        client = Data360Client()
+        search_result = {"value": [{"series_description": {"database_id": "WB_SSGD", "database_name": "SSGD"}}]}
+        mock_http = _make_mock_client()
+        mock_http.request = AsyncMock(return_value=_mock_response(200, search_result))
+        client._client = mock_http
+
+        result = await client.resolve_db_name("WB_SSGD")
+        assert result == "SSGD"
+
+
 # --- Task 6: Enrich citation source ---
 
 
