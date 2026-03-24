@@ -12,7 +12,7 @@ from mcp_server.server import search_indicators, get_data, get_metadata, list_in
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-def _load_fixture(name: str) -> dict:
+def _load_fixture(name: str) -> dict | list:
     return json.loads((FIXTURES / name).read_text())
 
 
