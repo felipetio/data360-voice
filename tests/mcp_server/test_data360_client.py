@@ -282,3 +282,128 @@ class TestPublicMethods:
         result = await client.get_paginated("/data360/data", database_id="WB_WDI")
         assert result["success"] is True
         assert result["returned_count"] == 1
+
+
+# --- Task 5: Database name cache ---
+
+
+class TestDbNameCache:
+    def test_populates_from_search_results(self):
+        client = Data360Client()
+        results = [
+            {"series_description": {"database_id": "WB_SSGD", "database_name": "Social sustainability global database"}},
+            {"series_description": {"database_id": "OWID_CB", "database_name": "CO2 and Greenhouse Gas Emissions"}},
+        ]
+        client.cache_db_names(results)
+        assert client._db_name_cache["WB_SSGD"] == "Social sustainability global database"
+        assert client._db_name_cache["OWID_CB"] == "CO2 and Greenhouse Gas Emissions"
+
+    def test_ignores_empty_values(self):
+        client = Data360Client()
+        results = [
+            {"series_description": {"database_id": "WB_SSGD", "database_name": ""}},
+            {"series_description": {"database_id": "", "database_name": "Some DB"}},
+            {"series_description": {"database_id": None, "database_name": "Some DB"}},
+            {"series_description": {}},
+            {},
+        ]
+        client.cache_db_names(results)
+        assert client._db_name_cache == {}
+
+    def test_get_returns_none_on_miss(self):
+        client = Data360Client()
+        assert client._db_name_cache.get("NONEXISTENT") is None
+
+    def test_overwrites_existing_entry(self):
+        client = Data360Client()
+        client.cache_db_names([{"series_description": {"database_id": "X", "database_name": "Old"}}])
+        client.cache_db_names([{"series_description": {"database_id": "X", "database_name": "New"}}])
+        assert client._db_name_cache["X"] == "New"
+
+
+# --- Task 6: Enrich citation source ---
+
+
+class TestEnrichCitationSource:
+    @pytest.mark.asyncio
+    async def test_uses_data_source_when_present(self):
+        """WDI case: DATA_SOURCE is populated, use it as CITATION_SOURCE."""
+        client = Data360Client()
+        records = [{"DATA_SOURCE": "WDI", "DATABASE_ID": "WB_WDI", "OBS_VALUE": "42"}]
+        await client.enrich_citation_source(records)
+        assert records[0]["CITATION_SOURCE"] == "WDI"
+
+    @pytest.mark.asyncio
+    async def test_uses_cached_db_name_when_data_source_null(self):
+        """Non-WDI case: DATA_SOURCE is null, use cached database_name."""
+        client = Data360Client()
+        client._db_name_cache["WB_SSGD"] = "Social sustainability global database"
+        records = [{"DATA_SOURCE": None, "DATABASE_ID": "WB_SSGD", "OBS_VALUE": "2.06"}]
+        await client.enrich_citation_source(records)
+        assert records[0]["CITATION_SOURCE"] == "Social sustainability global database"
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_database_id_string(self):
+        """Last resort: nothing cached, fallback search returns empty."""
+        client = Data360Client()
+        mock_http = _make_mock_client()
+        mock_http.request = AsyncMock(return_value=_mock_response(200, {"value": []}))
+        client._client = mock_http
+
+        records = [{"DATA_SOURCE": None, "DATABASE_ID": "UNKNOWN_DB", "OBS_VALUE": "1"}]
+        await client.enrich_citation_source(records)
+        assert records[0]["CITATION_SOURCE"] == "UNKNOWN_DB"
+
+    @pytest.mark.asyncio
+    async def test_calls_resolve_on_cache_miss(self):
+        """On cache miss, resolve_db_name does a fallback search."""
+        client = Data360Client()
+        search_result = {"value": [{"series_description": {"database_id": "WB_SSGD", "database_name": "SSGD Full Name"}}]}
+        mock_http = _make_mock_client()
+        mock_http.request = AsyncMock(return_value=_mock_response(200, search_result))
+        client._client = mock_http
+
+        records = [{"DATA_SOURCE": None, "DATABASE_ID": "WB_SSGD", "OBS_VALUE": "1"}]
+        await client.enrich_citation_source(records)
+        assert records[0]["CITATION_SOURCE"] == "SSGD Full Name"
+        assert client._db_name_cache["WB_SSGD"] == "SSGD Full Name"
+
+    @pytest.mark.asyncio
+    async def test_preserves_original_data_source(self):
+        """DATA_SOURCE field must never be modified."""
+        client = Data360Client()
+        records = [
+            {"DATA_SOURCE": "WDI", "DATABASE_ID": "WB_WDI", "OBS_VALUE": "42"},
+            {"DATA_SOURCE": None, "DATABASE_ID": "WB_SSGD", "OBS_VALUE": "1"},
+        ]
+        client._db_name_cache["WB_SSGD"] = "SSGD"
+        await client.enrich_citation_source(records)
+        assert records[0]["DATA_SOURCE"] == "WDI"
+        assert records[1]["DATA_SOURCE"] is None
+
+    @pytest.mark.asyncio
+    async def test_missing_data_source_key_uses_cache(self):
+        """Record without DATA_SOURCE key at all uses cached name."""
+        client = Data360Client()
+        client._db_name_cache["WB_SSGD"] = "SSGD"
+        records = [{"DATABASE_ID": "WB_SSGD", "OBS_VALUE": "1"}]
+        await client.enrich_citation_source(records)
+        assert records[0]["CITATION_SOURCE"] == "SSGD"
+
+    @pytest.mark.asyncio
+    async def test_resolves_each_unique_db_id_once(self):
+        """Multiple records with same DATABASE_ID should trigger only one resolve call."""
+        client = Data360Client()
+        search_result = {"value": [{"series_description": {"database_id": "X", "database_name": "X Name"}}]}
+        mock_http = _make_mock_client()
+        mock_http.request = AsyncMock(return_value=_mock_response(200, search_result))
+        client._client = mock_http
+
+        records = [
+            {"DATA_SOURCE": None, "DATABASE_ID": "X", "OBS_VALUE": "1"},
+            {"DATA_SOURCE": None, "DATABASE_ID": "X", "OBS_VALUE": "2"},
+        ]
+        await client.enrich_citation_source(records)
+        assert mock_http.request.call_count == 1
+        assert records[0]["CITATION_SOURCE"] == "X Name"
+        assert records[1]["CITATION_SOURCE"] == "X Name"

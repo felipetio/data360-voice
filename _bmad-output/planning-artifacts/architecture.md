@@ -60,7 +60,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 
 ### Cross-Cutting Concerns Identified
 
-- **Citation integrity:** DATA_SOURCE must flow from API response through MCP tool result to LLM output without modification. This is the core trust proposition.
+- **Citation integrity:** Dual-source citation strategy. `DATA_SOURCE` is preferred when present (e.g., WB_WDI), but most databases return null. Fallback uses `database_name` from search results, cached in `Data360Client._db_name_cache`. The resolved value is exposed as `CITATION_SOURCE` (the only MCP-added field, not from API). `DATA_SOURCE` is never modified.
 - **Data freshness transparency:** Every response must show the most recent data year and warn when >2 years old.
 - **Transparent failure:** "No data found" must be explicit and honest across all components (MCP server, LLM responses, UI).
 - **Caching strategy:** Spans MCP server (API response cache), backend (indicator metadata), and database (PostgreSQL with TTL).
@@ -246,7 +246,8 @@ Claude generates narrative with DATA_SOURCE citations
 
 | Field | Purpose | Passed to LLM |
 |-------|---------|---------------|
-| `DATA_SOURCE` | Source attribution for citations | Always |
+| `DATA_SOURCE` | Raw source attribution from API (often null) | Always |
+| `CITATION_SOURCE` | Resolved source name: `DATA_SOURCE` if present, else cached `database_name`, else `DATABASE_ID` (MCP-added field) | Always |
 | `COMMENT_TS` | Human-readable data description | Always |
 | `OBS_VALUE` | Actual data value | Always |
 | `TIME_PERIOD` | Year of the data point | Always |
@@ -385,7 +386,7 @@ All tools return a consistent structure:
 **JSON Field Naming:**
 - Internal Python code: `snake_case`
 - MCP tool responses: `snake_case`
-- Data360 API fields: preserve as-is (`OBS_VALUE`, `DATA_SOURCE`, `COMMENT_TS`) since they're passed through to the LLM for citation integrity
+- Data360 API fields: preserve as-is (`OBS_VALUE`, `DATA_SOURCE`, `COMMENT_TS`) since they're passed through to the LLM for citation integrity. `CITATION_SOURCE` is the only field added by the MCP server (not from the API), resolved from `DATA_SOURCE` or cached `database_name`.
 
 **Date/Time:**
 - API dates: pass through as-is from Data360 (`TIME_PERIOD` is typically a year string like `"2023"`)
