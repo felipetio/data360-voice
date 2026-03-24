@@ -1,0 +1,11 @@
+{
+  "results": [
+    {
+      "indicatorId": "WB_WDI_EN_ATM_CO2E_KT",
+      "name": "CO2 emissions (kt)",
+      "description": "Carbon dioxide emissions are those stemming from the burning of fossil fuels.",
+      "topics": ["Climate Change"],
+      "datasetName": "World Development Indicators"
+    }
+  ]
+}

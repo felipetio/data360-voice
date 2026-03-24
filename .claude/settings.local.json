@@ -17,7 +17,10 @@
       "Bash(uv run:*)",
       "Bash(python:*)",
       "Bash(find /Users/felipe/Projects/data360-voice -type d -not -path */__pycache__ -not -path */.venv -not -path */.git -not -path */_bmad* -not -path *.pytest_cache)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(ls:*)",
+      "Bash(uv add:*)",
+      "Bash(uv remove:*)"
     ]
   }
 }

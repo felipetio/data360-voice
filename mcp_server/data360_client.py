@@ -2,17 +2,22 @@
 
 import asyncio
 import logging
+from typing import Any
 
 import httpx
 
 from mcp_server.config import (
     BASE_URL,
+    MAX_RECORDS,
     MAX_RETRIES,
+    PAGE_SIZE,
     REQUEST_TIMEOUT,
     RETRY_BACKOFF_BASE,
 )
 
 logger = logging.getLogger(__name__)
+
+_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
 
 class Data360Client:
@@ -37,11 +42,133 @@ class Data360Client:
         self._client: httpx.AsyncClient | None = None
         self._lock = asyncio.Lock()
 
+    @staticmethod
+    def _map_params(params: dict) -> dict:
+        """Map snake_case parameter names to UPPERCASE for the Data360 API."""
+        return {k.upper(): v for k, v in params.items() if v is not None}
+
     async def _get_client(self) -> httpx.AsyncClient:
         async with self._lock:
             if self._client is None or self._client.is_closed:
                 self._client = httpx.AsyncClient(timeout=self.timeout)
         return self._client
+
+    async def _request(
+        self,
+        method: str,
+        endpoint: str,
+        params: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Execute an HTTP request with retry on transient errors.
+
+        Returns parsed JSON on success, or a structured error dict on failure.
+        """
+        url = f"{self.base_url}{endpoint}"
+        client = await self._get_client()
+
+        for attempt in range(self.max_retries + 1):
+            try:
+                logger.debug("Request %s %s params=%s json=%s", method, url, params, json_body)
+                kwargs: dict[str, Any] = {}
+                if params:
+                    kwargs["params"] = params
+                if json_body:
+                    kwargs["json"] = json_body
+                response = await client.request(method, url, **kwargs)
+
+                if response.status_code < 400:
+                    try:
+                        data = response.json()
+                    except ValueError as exc:
+                        logger.error("Invalid JSON from %s %s: %s", method, url, exc)
+                        return {"success": False, "error": f"Invalid JSON response: {exc}", "error_type": "api_error"}
+                    logger.debug("Response %s %s -> %d", method, url, response.status_code)
+                    return data
+
+                if response.status_code in _RETRYABLE_STATUS:
+                    if attempt < self.max_retries:
+                        delay = self.retry_backoff_base * (2**attempt)
+                        logger.warning(
+                            "Retryable error %d from %s, attempt %d/%d, retrying in %.1fs",
+                            response.status_code, url, attempt + 1, self.max_retries, delay,
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    error_msg = f"Data360 API returned {response.status_code} after {self.max_retries} retries"
+                    logger.error(error_msg)
+                    return {"success": False, "error": error_msg, "error_type": "api_error"}
+
+                error_msg = f"Data360 API returned {response.status_code}: {response.reason_phrase or 'Unknown'}"
+                logger.error(error_msg)
+                return {"success": False, "error": error_msg, "error_type": "api_error"}
+
+            except httpx.TimeoutException as exc:
+                logger.error("Timeout on %s %s: %s", method, url, exc)
+                return {"success": False, "error": f"Request timed out: {exc}", "error_type": "timeout"}
+            except httpx.RequestError as exc:
+                logger.error("Network error on %s %s: %s", method, url, exc)
+                return {"success": False, "error": f"Network error: {exc}", "error_type": "api_error"}
+
+    async def _paginated_get(
+        self,
+        endpoint: str,
+        params: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Fetch data with auto-pagination using the skip parameter."""
+        all_records: list[dict] = []
+        skip = 0
+
+        while len(all_records) < MAX_RECORDS:
+            page_params = {**params, "skip": skip}
+            result = await self._request("GET", endpoint, params=page_params)
+
+            if isinstance(result, dict) and result.get("success") is False:
+                return result
+
+            page_data = result.get("value", [])
+            if not page_data:
+                break
+
+            all_records.extend(page_data)
+
+            if len(page_data) < PAGE_SIZE or len(all_records) >= MAX_RECORDS:
+                break
+
+            skip += PAGE_SIZE
+
+        truncated = len(all_records) >= MAX_RECORDS
+        if truncated:
+            all_records = all_records[:MAX_RECORDS]
+
+        return {
+            "success": True,
+            "data": all_records,
+            "total_count": len(all_records),
+            "returned_count": len(all_records),
+            "truncated": truncated,
+        }
+
+    async def get(self, endpoint: str, **kwargs: Any) -> dict[str, Any]:
+        """Single GET request with snake_case -> UPPERCASE param mapping."""
+        params = self._map_params(kwargs)
+        result = await self._request("GET", endpoint, params=params)
+        if isinstance(result, dict) and result.get("success") is False:
+            return result
+        return {"success": True, "data": result}
+
+    async def post(self, endpoint: str, **kwargs: Any) -> dict[str, Any]:
+        """Single POST request with snake_case -> UPPERCASE body mapping."""
+        body = self._map_params(kwargs)
+        result = await self._request("POST", endpoint, json_body=body)
+        if isinstance(result, dict) and result.get("success") is False:
+            return result
+        return {"success": True, "data": result}
+
+    async def get_paginated(self, endpoint: str, **kwargs: Any) -> dict[str, Any]:
+        """Paginated GET request with snake_case -> UPPERCASE param mapping."""
+        params = self._map_params(kwargs)
+        return await self._paginated_get(endpoint, params)
 
     async def close(self) -> None:
         if self._client and not self._client.is_closed:

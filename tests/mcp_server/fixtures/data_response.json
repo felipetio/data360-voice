@@ -1,0 +1,14 @@
+{
+  "value": [
+    {
+      "DATABASE_ID": "WB_WDI",
+      "INDICATOR": "EN_ATM_CO2E_KT",
+      "REF_AREA": "BRA",
+      "TIME_PERIOD": "2020",
+      "OBS_VALUE": "408645.8",
+      "DATA_SOURCE": "World Development Indicators",
+      "COMMENT_TS": "CO2 emissions (kt)",
+      "LATEST_DATA": true
+    }
+  ]
+}
