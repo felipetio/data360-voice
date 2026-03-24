@@ -1,11 +1,42 @@
 {
-  "results": [
+  "@odata.context": "https://itsda-dataexp-prd.search.windows.net/indexes('data360-metadata-vector')/$metadata#docs(*)",
+  "@odata.count": 300,
+  "value": [
     {
-      "indicatorId": "WB_WDI_EN_ATM_CO2E_KT",
-      "name": "CO2 emissions (kt)",
-      "description": "Carbon dioxide emissions are those stemming from the burning of fossil fuels.",
-      "topics": ["Climate Change"],
-      "datasetName": "World Development Indicators"
+      "@search.score": 81.95,
+      "id": "META_WB_SSGD_CO2_EMISSIONS",
+      "type": "indicator",
+      "series_description": {
+        "idno": "WB_SSGD_CO2_EMISSIONS",
+        "database_id": "WB_SSGD",
+        "database_name": "Social sustainability global database",
+        "name": "CO2 emissions",
+        "definition_short": "CO2 emissions",
+        "definition_long": "CO2 emissions in metric tons per capita",
+        "topics": [
+          {
+            "id": "P1_000025",
+            "name": "Pollution Management, Environmental Health and Circular Economy",
+            "parent_id": "P1_000003",
+            "vocabulary": "Data360 Topic L2",
+            "uri": null
+          }
+        ]
+      }
+    },
+    {
+      "@search.score": 69.90,
+      "id": "META_OWID_CB_CEMENT_CO2_PER_CAPITA",
+      "type": "indicator",
+      "series_description": {
+        "idno": "OWID_CB_CEMENT_CO2_PER_CAPITA",
+        "database_id": "OWID_CB",
+        "database_name": "CO2 and Greenhouse Gas Emissions",
+        "name": "Annual CO2 emissions from cement (per capita)",
+        "definition_short": "Annual production-based emissions of carbon dioxide (CO2) from cement, measured in tonnes per person",
+        "definition_long": "Annual CO2 emissions from cement (per capita) - Annual emissions of carbon dioxide (CO2) from cement, measured in tonnes per person.",
+        "topics": []
+      }
     }
   ]
 }

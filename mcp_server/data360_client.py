@@ -59,10 +59,11 @@ class Data360Client:
         endpoint: str,
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | list[Any]:
         """Execute an HTTP request with retry on transient errors.
 
-        Returns parsed JSON on success, or a structured error dict on failure.
+        Returns parsed JSON on success (dict or list depending on endpoint),
+        or a structured error dict on failure.
         """
         url = f"{self.base_url}{endpoint}"
         client = await self._get_client()
@@ -117,6 +118,7 @@ class Data360Client:
     ) -> dict[str, Any]:
         """Fetch data with auto-pagination using the skip parameter."""
         all_records: list[dict] = []
+        api_total: int | None = None
         skip = 0
 
         while len(all_records) < MAX_RECORDS:
@@ -125,6 +127,9 @@ class Data360Client:
 
             if isinstance(result, dict) and result.get("success") is False:
                 return result
+
+            if api_total is None and isinstance(result, dict):
+                api_total = result.get("count")
 
             page_data = result.get("value", [])
             if not page_data:
@@ -144,7 +149,7 @@ class Data360Client:
         return {
             "success": True,
             "data": all_records,
-            "total_count": len(all_records),
+            "total_count": api_total if api_total is not None else len(all_records),
             "returned_count": len(all_records),
             "truncated": truncated,
         }

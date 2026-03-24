@@ -1,0 +1,32 @@
+[
+  {
+    "field_name": "FREQ",
+    "label_name": "FREQ",
+    "field_value": ["A"]
+  },
+  {
+    "field_name": "REF_AREA",
+    "label_name": "REF_AREA",
+    "field_value": ["ABW", "AFE", "AFG", "AFW", "AGO"]
+  },
+  {
+    "field_name": "SEX",
+    "label_name": "SEX",
+    "field_value": ["_T"]
+  },
+  {
+    "field_name": "AGE",
+    "label_name": "AGE",
+    "field_value": ["_T"]
+  },
+  {
+    "field_name": "URBANISATION",
+    "label_name": "URBANISATION",
+    "field_value": ["_T"]
+  },
+  {
+    "field_name": "TIME_PERIOD",
+    "label_name": "TIME_PERIOD",
+    "field_value": ["2015", "2006", "1979", "2004", "1967"]
+  }
+]
