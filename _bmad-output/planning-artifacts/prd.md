@@ -369,7 +369,7 @@ Data360 Voice is a single-page web application built on Chainlit (mounted in Fas
 
 ### Citation & Source Attribution
 
-- FR8: The system can include DATA_SOURCE attribution from the API on every data-bearing response
+- FR8: The system can include CITATION_SOURCE attribution (derived from DATA_SOURCE or database_name) on every data-bearing response
 - FR9: The system can format citations for direct use in publications (publication-ready format)
 - FR10: The system can display the most recent data year available for every data point
 - FR11: The system can warn users when data is older than 2 years

@@ -18,13 +18,14 @@ def _load_fixture(name: str) -> dict | list:
 
 @pytest.fixture
 def mock_client():
-    """Provide a patched Data360Client with mockable methods."""
-    with patch("mcp_server.server.Data360Client") as MockClient:
-        instance = AsyncMock()
-        MockClient.return_value.__aenter__ = AsyncMock(return_value=instance)
-        MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
-        # Preserve real _map_params so param mapping tests work correctly
-        MockClient._map_params = Data360Client._map_params
+    """Provide a patched shared _client with mockable methods."""
+    instance = AsyncMock()
+    instance._db_name_cache = {}
+    instance.cache_db_names = Data360Client.cache_db_names.__get__(instance)
+    instance.enrich_citation_source = AsyncMock()
+    # Preserve real _map_params so param mapping tests work correctly
+    instance._map_params = Data360Client._map_params
+    with patch("mcp_server.server._client", instance):
         yield instance
 
 
@@ -164,6 +165,17 @@ class TestSearchIndicators:
         assert result["success"] is False
         assert "connection exploded" in result["error"]
         assert result["error_type"] == "api_error"
+
+    @pytest.mark.asyncio
+    async def test_populates_db_name_cache(self, mock_client):
+        """search_indicators populates the database name cache from results."""
+        fixture = _load_fixture("searchv2_response.json")
+        mock_client._request = AsyncMock(return_value=fixture)
+
+        await search_indicators(query="CO2 emissions")
+
+        assert mock_client._db_name_cache["WB_SSGD"] == "Social sustainability global database"
+        assert mock_client._db_name_cache["OWID_CB"] == "CO2 and Greenhouse Gas Emissions"
 
 
 class TestGetData:
@@ -307,6 +319,40 @@ class TestGetData:
         assert result["success"] is False
         assert "boom" in result["error"]
         assert result["error_type"] == "api_error"
+
+    @pytest.mark.asyncio
+    async def test_calls_enrich_citation_source(self, mock_client):
+        """get_data calls enrich_citation_source on successful results."""
+        data = [{"OBS_VALUE": "1", "DATABASE_ID": "WB_SSGD"}]
+        mock_client._paginated_get = AsyncMock(return_value={
+            "success": True, "data": data, "total_count": 1, "returned_count": 1, "truncated": False,
+        })
+
+        await get_data(database_id="WB_SSGD", indicator="IND")
+
+        mock_client.enrich_citation_source.assert_called_once_with(data)
+
+    @pytest.mark.asyncio
+    async def test_skips_enrich_on_empty_data(self, mock_client):
+        """get_data does not call enrich_citation_source when data is empty."""
+        mock_client._paginated_get = AsyncMock(return_value={
+            "success": True, "data": [], "total_count": 0, "returned_count": 0, "truncated": False,
+        })
+
+        await get_data(database_id="WB_WDI", indicator="IND")
+
+        mock_client.enrich_citation_source.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_skips_enrich_on_error(self, mock_client):
+        """get_data does not call enrich_citation_source on API error."""
+        mock_client._paginated_get = AsyncMock(return_value={
+            "success": False, "error": "fail", "error_type": "api_error",
+        })
+
+        await get_data(database_id="WB_WDI", indicator="IND")
+
+        mock_client.enrich_citation_source.assert_not_called()
 
 
 class TestGetMetadata:

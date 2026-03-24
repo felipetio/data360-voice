@@ -41,6 +41,7 @@ class Data360Client:
         self.retry_backoff_base = retry_backoff_base
         self._client: httpx.AsyncClient | None = None
         self._lock = asyncio.Lock()
+        self._db_name_cache: dict[str, str] = {}
 
     @staticmethod
     def _map_params(params: dict) -> dict:
@@ -174,6 +175,48 @@ class Data360Client:
         """Paginated GET request with snake_case -> UPPERCASE param mapping."""
         params = self._map_params(kwargs)
         return await self._paginated_get(endpoint, params)
+
+    def cache_db_names(self, results: list[dict]) -> None:
+        """Extract database_id/database_name from search results and cache them."""
+        for item in results:
+            sd = item.get("series_description") or {}
+            db_id = sd.get("database_id")
+            db_name = sd.get("database_name")
+            if db_id and db_name:
+                self._db_name_cache[db_id] = db_name
+
+    async def resolve_db_name(self, database_id: str) -> str | None:
+        """Resolve a database_id to its human-readable name via lightweight search."""
+        if database_id in self._db_name_cache:
+            return self._db_name_cache[database_id]
+        body = {"search": "*", "filter": f"series_description/database_id eq '{database_id}'", "top": 1}
+        result = await self._request("POST", "/data360/searchv2", json_body=body)
+        if isinstance(result, dict) and result.get("success") is False:
+            return None
+        items = result.get("value", [])
+        if items:
+            self.cache_db_names(items)
+            return self._db_name_cache.get(database_id)
+        return None
+
+    async def enrich_citation_source(self, records: list[dict]) -> None:
+        """Add CITATION_SOURCE to each record. Never modifies DATA_SOURCE."""
+        db_ids_to_resolve: set[str] = set()
+        for record in records:
+            if not record.get("DATA_SOURCE") and record.get("DATABASE_ID"):
+                db_ids_to_resolve.add(record["DATABASE_ID"])
+
+        for db_id in db_ids_to_resolve:
+            if db_id not in self._db_name_cache:
+                await self.resolve_db_name(db_id)
+
+        for record in records:
+            data_source = record.get("DATA_SOURCE")
+            if data_source:
+                record["CITATION_SOURCE"] = data_source
+            else:
+                db_id = record.get("DATABASE_ID", "")
+                record["CITATION_SOURCE"] = self._db_name_cache.get(db_id, db_id)
 
     async def close(self) -> None:
         if self._client and not self._client.is_closed:

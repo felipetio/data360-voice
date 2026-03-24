@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 mcp = FastMCP("data360-voice", instructions="World Bank Data360 climate and development data tools.")
 
+_client = Data360Client()
+
 
 @mcp.tool()
 async def search_indicators(
@@ -35,13 +37,13 @@ async def search_indicators(
         if filter is not None:
             body["filter"] = filter
 
-        async with Data360Client() as client:
-            response = await client._request("POST", "/data360/searchv2", json_body=body)
+        response = await _client._request("POST", "/data360/searchv2", json_body=body)
 
         if isinstance(response, dict) and response.get("success") is False:
             return response
 
         results = response.get("value", [])
+        _client.cache_db_names(results)
         total_count = response.get("@odata.count") or len(results)
         returned_count = len(results)
         return {
@@ -84,15 +86,17 @@ async def get_data(
         if ref_area is not None:
             kwargs["ref_area"] = ref_area
 
-        async with Data360Client() as client:
-            # Map standard params to UPPERCASE, then add camelCase time period
-            # params directly (API expects timePeriodFrom, not TIME_PERIOD_FROM)
-            params = Data360Client._map_params(kwargs)
-            if time_period_from is not None:
-                params["timePeriodFrom"] = time_period_from
-            if time_period_to is not None:
-                params["timePeriodTo"] = time_period_to
-            return await client._paginated_get("/data360/data", params)
+        # Map standard params to UPPERCASE, then add camelCase time period
+        # params directly (API expects timePeriodFrom, not TIME_PERIOD_FROM)
+        params = Data360Client._map_params(kwargs)
+        if time_period_from is not None:
+            params["timePeriodFrom"] = time_period_from
+        if time_period_to is not None:
+            params["timePeriodTo"] = time_period_to
+        result = await _client._paginated_get("/data360/data", params)
+        if result.get("success") and result.get("data"):
+            await _client.enrich_citation_source(result["data"])
+        return result
     except Exception as exc:
         logger.error("get_data failed: %s", exc)
         return {"success": False, "error": str(exc), "error_type": "api_error"}
@@ -115,8 +119,7 @@ async def get_metadata(
     try:
         body: dict[str, Any] = {"query": query}
 
-        async with Data360Client() as client:
-            response = await client._request("POST", "/data360/metadata", json_body=body)
+        response = await _client._request("POST", "/data360/metadata", json_body=body)
 
         if isinstance(response, dict) and response.get("success") is False:
             return response
@@ -156,8 +159,7 @@ async def list_indicators(
     try:
         params: dict[str, Any] = {"datasetId": dataset_id}
 
-        async with Data360Client() as client:
-            response = await client._request("GET", "/data360/indicators", params=params)
+        response = await _client._request("GET", "/data360/indicators", params=params)
 
         if isinstance(response, dict) and response.get("success") is False:
             return response
@@ -199,8 +201,7 @@ async def get_disaggregation(
         if indicator_id is not None:
             params["indicatorId"] = indicator_id
 
-        async with Data360Client() as client:
-            response = await client._request("GET", "/data360/disaggregation", params=params)
+        response = await _client._request("GET", "/data360/disaggregation", params=params)
 
         if isinstance(response, dict) and response.get("success") is False:
             return response
