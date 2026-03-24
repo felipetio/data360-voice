@@ -52,3 +52,45 @@ async def search_indicators(
     except Exception as exc:
         logger.error("search_indicators failed: %s", exc)
         return {"success": False, "error": str(exc), "error_type": "api_error"}
+
+
+@mcp.tool()
+async def get_data(
+    database_id: str,
+    indicator: str,
+    ref_area: str | None = None,
+    time_period_from: str | None = None,
+    time_period_to: str | None = None,
+) -> dict[str, Any]:
+    """Retrieve data values for a specific indicator by country and time period.
+
+    Args:
+        database_id: Dataset identifier (e.g. "WB_WDI").
+        indicator: Indicator code (e.g. "WB_WDI_EN_ATM_CO2E_KT").
+        ref_area: Country/region code (e.g. "BRA"). Optional.
+        time_period_from: Start year filter (e.g. "2015"). Optional.
+        time_period_to: End year filter (e.g. "2023"). Optional.
+
+    Returns:
+        Dict with success status, data list preserving API field names
+        (OBS_VALUE, DATA_SOURCE, TIME_PERIOD, etc.), total_count, returned_count,
+        and truncated flag.
+    """
+    try:
+        # Standard params go through _map_params (snake_case -> UPPERCASE)
+        kwargs: dict[str, Any] = {"database_id": database_id, "indicator": indicator}
+        if ref_area is not None:
+            kwargs["ref_area"] = ref_area
+
+        async with Data360Client() as client:
+            # Map standard params to UPPERCASE, then add camelCase time period
+            # params directly (API expects timePeriodFrom, not TIME_PERIOD_FROM)
+            params = Data360Client._map_params(kwargs)
+            if time_period_from is not None:
+                params["timePeriodFrom"] = time_period_from
+            if time_period_to is not None:
+                params["timePeriodTo"] = time_period_to
+            return await client._paginated_get("/data360/data", params)
+    except Exception as exc:
+        logger.error("get_data failed: %s", exc)
+        return {"success": False, "error": str(exc), "error_type": "api_error"}

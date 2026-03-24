@@ -47,7 +47,7 @@ development_status:
   1-1-project-setup-and-configuration: done
   1-2-data360-api-client-with-error-handling: done
   1-3-search-indicators-mcp-tool: done
-  1-4-get-data-mcp-tool: ready-for-dev
+  1-4-get-data-mcp-tool: done
   1-5-get-metadata-list-indicators-and-get-disaggregation-mcp-tools: ready-for-dev
   1-6-dual-transport-and-claude-desktop-testing: ready-for-dev
   1-7-mcp-server-test-suite: ready-for-dev
