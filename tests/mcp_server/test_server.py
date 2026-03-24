@@ -7,7 +7,7 @@ import pytest
 from unittest.mock import AsyncMock, patch
 
 from mcp_server.data360_client import Data360Client
-from mcp_server.server import search_indicators, get_data
+from mcp_server.server import search_indicators, get_data, get_metadata, list_indicators, get_disaggregation
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -303,6 +303,237 @@ class TestGetData:
         mock_client._paginated_get = AsyncMock(side_effect=RuntimeError("boom"))
 
         result = await get_data(database_id="WB_WDI", indicator="IND")
+
+        assert result["success"] is False
+        assert "boom" in result["error"]
+        assert result["error_type"] == "api_error"
+
+
+class TestGetMetadata:
+    """Tests for the get_metadata MCP tool."""
+
+    @pytest.mark.asyncio
+    async def test_successful_metadata_retrieval(self, mock_client):
+        """AC1: Successful retrieval returns metadata with real API structure."""
+        fixture = _load_fixture("metadata_response.json")
+        mock_client._request = AsyncMock(return_value=fixture)
+
+        result = await get_metadata(query="&$filter=series_description/idno eq 'WB_WDI_SP_POP_TOTL'")
+
+        assert result["success"] is True
+        assert len(result["data"]) == 1
+        item = result["data"][0]
+        assert item["id"] == "META_WB_WDI_SP_POP_TOTL"
+        assert item["series_description"]["idno"] == "WB_WDI_SP_POP_TOTL"
+        assert item["series_description"]["database_name"] == "World Development Indicators (WDI)"
+        assert result["total_count"] == 1
+        assert result["returned_count"] == 1
+        assert result["truncated"] is False
+
+    @pytest.mark.asyncio
+    async def test_query_passed_as_body(self, mock_client):
+        """AC1: Query string is passed as JSON body 'query' field."""
+        mock_client._request = AsyncMock(return_value={"value": [], "@odata.count": 0})
+
+        await get_metadata(query="&$filter=series_description/database_id eq 'WB_WDI'")
+
+        mock_client._request.assert_called_once_with(
+            "POST", "/data360/metadata",
+            json_body={"query": "&$filter=series_description/database_id eq 'WB_WDI'"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_total_count_from_odata(self, mock_client):
+        """AC1: total_count comes from @odata.count."""
+        mock_client._request = AsyncMock(return_value={
+            "@odata.count": 50,
+            "value": [{"id": "META_1"}],
+        })
+
+        result = await get_metadata(query="&$filter=series_description/database_id eq 'WB_WDI'&$top=1")
+
+        assert result["total_count"] == 50
+        assert result["returned_count"] == 1
+        assert result["truncated"] is True
+
+    @pytest.mark.asyncio
+    async def test_empty_results(self, mock_client):
+        """AC1: Empty results return correct format."""
+        mock_client._request = AsyncMock(return_value={"value": [], "@odata.count": 0})
+
+        result = await get_metadata(query="&$filter=series_description/idno eq 'NONEXISTENT'")
+
+        assert result["success"] is True
+        assert result["data"] == []
+        assert result["total_count"] == 0
+        assert result["truncated"] is False
+
+    @pytest.mark.asyncio
+    async def test_api_error_passthrough(self, mock_client):
+        """AC4: API errors are passed through."""
+        mock_client._request = AsyncMock(return_value={
+            "success": False, "error": "Data360 API returned 500 after 3 retries", "error_type": "api_error",
+        })
+
+        result = await get_metadata(query="&$filter=bad")
+
+        assert result["success"] is False
+        assert result["error_type"] == "api_error"
+
+    @pytest.mark.asyncio
+    async def test_unexpected_exception_returns_error(self, mock_client):
+        """AC4: Tool must return dict, never raise."""
+        mock_client._request = AsyncMock(side_effect=RuntimeError("boom"))
+
+        result = await get_metadata(query="test")
+
+        assert result["success"] is False
+        assert "boom" in result["error"]
+        assert result["error_type"] == "api_error"
+
+
+class TestListIndicators:
+    """Tests for the list_indicators MCP tool."""
+
+    @pytest.mark.asyncio
+    async def test_successful_list(self, mock_client):
+        """AC2: Successful list returns indicator IDs from real API."""
+        fixture = _load_fixture("indicators_response.json")
+        mock_client._request = AsyncMock(return_value=fixture)
+
+        result = await list_indicators(dataset_id="WB_WDI")
+
+        assert result["success"] is True
+        assert len(result["data"]) == 5
+        assert "WB_WDI_SP_POP_TOTL" in result["data"]
+        assert result["total_count"] == 5
+        assert result["returned_count"] == 5
+        assert result["truncated"] is False
+
+    @pytest.mark.asyncio
+    async def test_camel_case_param(self, mock_client):
+        """AC2: dataset_id is passed as camelCase datasetId."""
+        mock_client._request = AsyncMock(return_value=[])
+
+        await list_indicators(dataset_id="WB_WDI")
+
+        mock_client._request.assert_called_once_with(
+            "GET", "/data360/indicators",
+            params={"datasetId": "WB_WDI"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_empty_results(self, mock_client):
+        """AC2: Empty dataset returns correct format."""
+        mock_client._request = AsyncMock(return_value=[])
+
+        result = await list_indicators(dataset_id="NONEXISTENT")
+
+        assert result["success"] is True
+        assert result["data"] == []
+        assert result["total_count"] == 0
+        assert result["truncated"] is False
+
+    @pytest.mark.asyncio
+    async def test_api_error_passthrough(self, mock_client):
+        """AC4: API errors are passed through."""
+        mock_client._request = AsyncMock(return_value={
+            "success": False, "error": "Data360 API returned 404: Not Found", "error_type": "api_error",
+        })
+
+        result = await list_indicators(dataset_id="BAD")
+
+        assert result["success"] is False
+        assert result["error_type"] == "api_error"
+
+    @pytest.mark.asyncio
+    async def test_unexpected_exception_returns_error(self, mock_client):
+        """AC4: Tool must return dict, never raise."""
+        mock_client._request = AsyncMock(side_effect=RuntimeError("boom"))
+
+        result = await list_indicators(dataset_id="WB_WDI")
+
+        assert result["success"] is False
+        assert "boom" in result["error"]
+        assert result["error_type"] == "api_error"
+
+
+class TestGetDisaggregation:
+    """Tests for the get_disaggregation MCP tool."""
+
+    @pytest.mark.asyncio
+    async def test_successful_disaggregation(self, mock_client):
+        """AC3: Successful retrieval returns dimension objects from real API."""
+        fixture = _load_fixture("disaggregation_response.json")
+        mock_client._request = AsyncMock(return_value=fixture)
+
+        result = await get_disaggregation(dataset_id="WB_WDI", indicator_id="WB_WDI_SP_POP_TOTL")
+
+        assert result["success"] is True
+        assert len(result["data"]) == 6
+        freq = result["data"][0]
+        assert freq["field_name"] == "FREQ"
+        assert freq["field_value"] == ["A"]
+        ref_area = result["data"][1]
+        assert ref_area["field_name"] == "REF_AREA"
+        assert "ABW" in ref_area["field_value"]
+        assert result["total_count"] == 6
+        assert result["truncated"] is False
+
+    @pytest.mark.asyncio
+    async def test_required_and_optional_params(self, mock_client):
+        """AC3: Both datasetId and indicatorId passed as camelCase."""
+        mock_client._request = AsyncMock(return_value=[])
+
+        await get_disaggregation(dataset_id="WB_WDI", indicator_id="WB_WDI_SP_POP_TOTL")
+
+        mock_client._request.assert_called_once_with(
+            "GET", "/data360/disaggregation",
+            params={"datasetId": "WB_WDI", "indicatorId": "WB_WDI_SP_POP_TOTL"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_indicator_id_none_not_included(self, mock_client):
+        """AC3: When indicator_id is None, only datasetId is passed."""
+        mock_client._request = AsyncMock(return_value=[])
+
+        await get_disaggregation(dataset_id="WB_WDI")
+
+        mock_client._request.assert_called_once_with(
+            "GET", "/data360/disaggregation",
+            params={"datasetId": "WB_WDI"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_empty_results(self, mock_client):
+        """AC3: No dimensions returns correct format."""
+        mock_client._request = AsyncMock(return_value=[])
+
+        result = await get_disaggregation(dataset_id="NONEXISTENT")
+
+        assert result["success"] is True
+        assert result["data"] == []
+        assert result["total_count"] == 0
+        assert result["truncated"] is False
+
+    @pytest.mark.asyncio
+    async def test_api_error_passthrough(self, mock_client):
+        """AC4: API errors are passed through."""
+        mock_client._request = AsyncMock(return_value={
+            "success": False, "error": "Data360 API returned 500 after 3 retries", "error_type": "api_error",
+        })
+
+        result = await get_disaggregation(dataset_id="WB_WDI")
+
+        assert result["success"] is False
+        assert result["error_type"] == "api_error"
+
+    @pytest.mark.asyncio
+    async def test_unexpected_exception_returns_error(self, mock_client):
+        """AC4: Tool must return dict, never raise."""
+        mock_client._request = AsyncMock(side_effect=RuntimeError("boom"))
+
+        result = await get_disaggregation(dataset_id="WB_WDI")
 
         assert result["success"] is False
         assert "boom" in result["error"]

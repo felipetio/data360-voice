@@ -59,10 +59,11 @@ class Data360Client:
         endpoint: str,
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | list[Any]:
         """Execute an HTTP request with retry on transient errors.
 
-        Returns parsed JSON on success, or a structured error dict on failure.
+        Returns parsed JSON on success (dict or list depending on endpoint),
+        or a structured error dict on failure.
         """
         url = f"{self.base_url}{endpoint}"
         client = await self._get_client()

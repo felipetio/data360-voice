@@ -42,7 +42,7 @@ async def search_indicators(
             return response
 
         results = response.get("value", [])
-        total_count = response.get("@odata.count", len(results))
+        total_count = response.get("@odata.count") or len(results)
         returned_count = len(results)
         return {
             "success": True,
@@ -95,4 +95,127 @@ async def get_data(
             return await client._paginated_get("/data360/data", params)
     except Exception as exc:
         logger.error("get_data failed: %s", exc)
+        return {"success": False, "error": str(exc), "error_type": "api_error"}
+
+
+@mcp.tool()
+async def get_metadata(
+    query: str,
+) -> dict[str, Any]:
+    """Get detailed metadata about indicators, datasets, and topics.
+
+    Args:
+        query: OData query string (e.g. "&$filter=series_description/idno eq 'WB_WDI_SP_POP_TOTL'").
+            Supports $filter, $select, and $top OData parameters.
+
+    Returns:
+        Dict with success status, data list of metadata items, total_count,
+        returned_count, and truncated flag.
+    """
+    try:
+        body: dict[str, Any] = {"query": query}
+
+        async with Data360Client() as client:
+            response = await client._request("POST", "/data360/metadata", json_body=body)
+
+        if isinstance(response, dict) and response.get("success") is False:
+            return response
+
+        if not isinstance(response, dict):
+            logger.warning("get_metadata: unexpected response type %s", type(response).__name__)
+            return {"success": True, "data": [], "total_count": 0, "returned_count": 0, "truncated": False}
+
+        results = response.get("value", [])
+        total_count = response.get("@odata.count") or len(results)
+        returned_count = len(results)
+        return {
+            "success": True,
+            "data": results,
+            "total_count": total_count,
+            "returned_count": returned_count,
+            "truncated": total_count > returned_count,
+        }
+    except Exception as exc:
+        logger.error("get_metadata failed: %s", exc)
+        return {"success": False, "error": str(exc), "error_type": "api_error"}
+
+
+@mcp.tool()
+async def list_indicators(
+    dataset_id: str,
+) -> dict[str, Any]:
+    """List all available indicators in a given dataset.
+
+    Args:
+        dataset_id: Dataset identifier (e.g. "WB_WDI").
+
+    Returns:
+        Dict with success status, data list of indicator ID strings,
+        total_count, returned_count, and truncated flag.
+    """
+    try:
+        params: dict[str, Any] = {"datasetId": dataset_id}
+
+        async with Data360Client() as client:
+            response = await client._request("GET", "/data360/indicators", params=params)
+
+        if isinstance(response, dict) and response.get("success") is False:
+            return response
+
+        if not isinstance(response, list):
+            logger.warning("list_indicators: unexpected response type %s", type(response).__name__)
+
+        results = response if isinstance(response, list) else []
+        return {
+            "success": True,
+            "data": results,
+            "total_count": len(results),
+            "returned_count": len(results),
+            "truncated": False,
+        }
+    except Exception as exc:
+        logger.error("list_indicators failed: %s", exc)
+        return {"success": False, "error": str(exc), "error_type": "api_error"}
+
+
+@mcp.tool()
+async def get_disaggregation(
+    dataset_id: str,
+    indicator_id: str | None = None,
+) -> dict[str, Any]:
+    """Get available disaggregation dimensions for a dataset or indicator.
+
+    Args:
+        dataset_id: Dataset identifier (e.g. "WB_WDI").
+        indicator_id: Indicator code (e.g. "WB_WDI_SP_POP_TOTL"). Optional.
+
+    Returns:
+        Dict with success status, data list of dimension objects
+        (field_name, label_name, field_value), total_count, returned_count,
+        and truncated flag.
+    """
+    try:
+        params: dict[str, Any] = {"datasetId": dataset_id}
+        if indicator_id is not None:
+            params["indicatorId"] = indicator_id
+
+        async with Data360Client() as client:
+            response = await client._request("GET", "/data360/disaggregation", params=params)
+
+        if isinstance(response, dict) and response.get("success") is False:
+            return response
+
+        if not isinstance(response, list):
+            logger.warning("get_disaggregation: unexpected response type %s", type(response).__name__)
+
+        results = response if isinstance(response, list) else []
+        return {
+            "success": True,
+            "data": results,
+            "total_count": len(results),
+            "returned_count": len(results),
+            "truncated": False,
+        }
+    except Exception as exc:
+        logger.error("get_disaggregation failed: %s", exc)
         return {"success": False, "error": str(exc), "error_type": "api_error"}

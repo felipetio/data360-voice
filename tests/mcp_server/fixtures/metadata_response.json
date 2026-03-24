@@ -1,0 +1,21 @@
+{
+  "@odata.context": "https://itsda-dataexp-prd.search.windows.net/indexes('data360-metadata')/$metadata#docs(*)",
+  "@odata.count": 1,
+  "value": [
+    {
+      "id": "META_WB_WDI_SP_POP_TOTL",
+      "type": "indicator",
+      "series_description": {
+        "idno": "WB_WDI_SP_POP_TOTL",
+        "database_id": "WB_WDI",
+        "database_name": "World Development Indicators (WDI)",
+        "name": "Population, total",
+        "definition_short": null,
+        "definition_long": "Total population is based on the de facto definition of population, which counts all residents regardless of legal status or citizenship. The values shown are midyear estimates.",
+        "measurement_unit": "Unit",
+        "periodicity": "Annual",
+        "topics": []
+      }
+    }
+  ]
+}

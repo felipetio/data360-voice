@@ -1,26 +1,22 @@
 {
   "permissions": {
     "allow": [
-      "Bash(echo \"exit: $?\")",
-      "WebFetch(domain:data360.worldbank.org)",
-      "WebFetch(domain:documents.worldbank.org)",
-      "WebFetch(domain:data360api.worldbank.org)",
-      "WebFetch(domain:datahelpdesk.worldbank.org)",
-      "WebFetch(domain:api.worldbank.org)",
-      "WebFetch(domain:datacatalog.worldbank.org)",
-      "WebFetch(domain:climateknowledgeportal.worldbank.org)",
-      "WebSearch",
-      "Bash(find /Users/felipe/Projects/word-bank-challenge/_bmad-output/planning-artifacts/ -type f -name *.md -o -name *.txt -o -name *.json)",
+      "WebFetch(domain:*.worldbank.org)",
       "WebFetch(domain:gofastmcp.com)",
       "WebFetch(domain:pypi.org)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(uv run:*)",
-      "Bash(python:*)",
-      "Bash(find /Users/felipe/Projects/data360-voice -type d -not -path */__pycache__ -not -path */.venv -not -path */.git -not -path */_bmad* -not -path *.pytest_cache)",
+      "WebSearch",
+      "Bash(echo \"exit: $?\")",
       "Bash(git add:*)",
       "Bash(ls:*)",
+      "Bash(uv run:*)",
       "Bash(uv add:*)",
-      "Bash(uv remove:*)"
+      "Bash(uv remove:*)",
+      "Bash(curl -s \"https://data360api.worldbank.org/data360/*\")",
+      "Bash(for f:*)",
+      "Bash(do echo:*)",
+      "Read(//Users/felipe/Projects/data360-voice/**)",
+      "Bash(done)"
     ]
   }
 }
