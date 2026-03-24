@@ -1,0 +1,606 @@
+---
+stepsCompleted:
+  - step-01-validate-prerequisites
+  - step-02-design-epics
+  - step-03-create-stories
+  - step-04-final-validation
+inputDocuments:
+  - prd.md
+  - architecture.md
+status: 'complete'
+completedAt: '2026-03-23'
+---
+
+# Data360 Voice - Epic Breakdown
+
+## Overview
+
+This document provides the complete epic and story breakdown for Data360 Voice, decomposing the requirements from the PRD and Architecture into implementable stories.
+
+## Requirements Inventory
+
+### Functional Requirements
+
+FR1: Users can ask climate and development data questions in natural language via a conversational interface
+FR2: The system can map natural language queries to relevant World Bank Data360 indicators using vector search
+FR3: The system can retrieve country-level data values for matched indicators from the Data360 API
+FR4: The system can retrieve indicator metadata (descriptions, topics, data sources) from the Data360 API
+FR5: Users can query indicators beyond climate (any of the 10,000+ Data360 indicators)
+FR6: Users can specify countries, regions, or use global comparisons (WLD area code) in their queries
+FR7: Users can ask follow-up questions that build on previous conversation context
+FR8: The system can include DATA_SOURCE attribution from the API on every data-bearing response
+FR9: The system can format citations for direct use in publications (publication-ready format)
+FR10: The system can display the most recent data year available for every data point
+FR11: The system can warn users when data is older than 2 years
+FR12: The system can display the indicator code alongside source attribution
+FR13: The system can generate contextual narrative responses that describe data values, trends, and comparisons
+FR14: The system can compare data across multiple countries in a single response
+FR15: The system can identify and describe trends over time (rising, falling, stable, accelerating)
+FR16: The system can flag data gaps and missing years transparently within responses
+FR17: The system can respond with "no relevant data found" when no matching indicators exist
+FR18: The system can restrict LLM responses to narrate only data returned by the Data360 API
+FR19: The system can prevent the LLM from adding causal explanations not present in API data
+FR20: The system can prevent the LLM from generating predictions or forecasts
+FR21: The system can prevent the LLM from adding external knowledge or editorial judgment
+FR22: The system can respond to "why?" questions by stating it can only report what the data shows
+FR23: Users can paste a climate or data claim for verification
+FR24: The system can identify relevant indicators to evaluate the claim
+FR25: The system can calculate actual values and compare them against the claimed values
+FR26: The system can return a verdict (supported, not supported, partially supported) with source citations
+FR27: The system can persist conversation history across sessions
+FR28: Users can start new conversations
+FR29: Users can access previous conversations
+FR30: The system can stream responses token-by-token in real time
+FR31: The MCP server can search indicators from natural language via the Data360 /searchv2 endpoint
+FR32: The MCP server can fetch data values via the Data360 /data endpoint
+FR33: The MCP server can retrieve indicator metadata via the Data360 /metadata endpoint
+FR34: The MCP server can handle pagination for large result sets (>1000 records)
+FR35: The MCP server can operate via stdio transport (for Claude Desktop development)
+FR36: The MCP server can operate via HTTP Streamable transport (for web production)
+
+### NonFunctional Requirements
+
+NFR1: Streaming responses must deliver first token within 3 seconds (uncached) or 1 second (cached)
+NFR2: Full response completion must occur within 15 seconds (uncached) or 5 seconds (cached)
+NFR3: The system must support 10-50 concurrent user sessions without degradation
+NFR4: World Bank API response caching must reduce repeat query latency to <100ms
+NFR5: Claude API key must be stored as environment variable, never in source code or client-side assets
+NFR6: Database connection credentials must be stored as environment variables
+NFR7: All external API communication (Claude API, Data360 API) must use HTTPS
+NFR8: No user PII is collected or stored beyond conversation content
+NFR9: The system must handle Data360 API unavailability gracefully with clear user messaging
+NFR10: The system must handle Claude API rate limits with exponential backoff
+NFR11: Cached API responses must have configurable TTL (default: 24 hours for data, indefinite for metadata)
+NFR12: The MCP server must be transport-agnostic, supporting both stdio and HTTP Streamable without code changes to tool logic
+
+### Additional Requirements
+
+- Manual project setup with uv (no starter template): `uv init data360-voice`, `uv add fastmcp chainlit fastapi uvicorn asyncpg anthropic httpx`
+- 5 MCP tools mapping 1:1 with Data360 API endpoints: search_indicators, get_data, get_metadata, list_indicators, get_disaggregation
+- Dual transport from day 1: stdio (Claude Desktop dev) and HTTP Streamable (Chainlit production)
+- Auto-pagination strategy: loop in 1000 increments, hard cap at 5000 records per tool call
+- Structured error responses from MCP tools (success/error format), never raise exceptions
+- httpx async client with exponential backoff retry (1s, 2s, 4s, max 3 attempts) for 429 and 5xx errors
+- Python stdlib logging (structured JSON in prod), logger per module, no print statements
+- Parameter mapping: Python snake_case in tool signatures, UPPERCASE for Data360 API, mapped in data360_client.py
+- Preserve Data360 API field names exactly (DATA_SOURCE, COMMENT_TS, OBS_VALUE, etc.) for citation integrity
+- PostgreSQL with pgvector for persistence and caching (Week 2+)
+- Chainlit mounted as FastAPI sub-application via mount_chainlit
+- Docker single container deployment on Railway or Render (deferred past Week 1)
+- Tests with pytest + httpx, MCP Inspector for debugging, Claude Desktop for e2e
+- Project structure: organize by component (mcp_server/, app/), not by type
+
+### UX Design Requirements
+
+No UX Design document was provided. Chainlit handles all frontend concerns for MVP per Architecture decision.
+
+### FR Coverage Map
+
+FR1: Epic 2 - Natural language query input via Chainlit chat interface
+FR2: Epic 1 - Vector search via MCP search_indicators tool
+FR3: Epic 1 - Data retrieval via MCP get_data tool
+FR4: Epic 1 - Metadata retrieval via MCP get_metadata tool
+FR5: Epic 1 - All Data360 indicators accessible through MCP tools
+FR6: Epic 1 - Country/region/global filtering in get_data tool
+FR7: Epic 2 - Multi-turn conversation with context via Chainlit
+FR8: Epic 3 - DATA_SOURCE passthrough in system prompt and response formatting
+FR9: Epic 3 - Publication-ready citation formatting via system prompt
+FR10: Epic 3 - Data year display in every response
+FR11: Epic 3 - Stale data warnings (>2 years)
+FR12: Epic 3 - Indicator code display with source attribution
+FR13: Epic 2 - Narrative response generation via LLM
+FR14: Epic 2 - Multi-country comparison responses
+FR15: Epic 2 - Trend description in responses
+FR16: Epic 2 - Data gap flagging in responses
+FR17: Epic 2 - "No data found" transparent responses
+FR18: Epic 3 - LLM grounding boundary via system prompt
+FR19: Epic 3 - Causal explanation prevention
+FR20: Epic 3 - Prediction/forecast prevention
+FR21: Epic 3 - External knowledge prevention
+FR22: Epic 3 - "Why?" question handling
+FR23: Epic 4 - Claim input for verification
+FR24: Epic 4 - Indicator identification for claims
+FR25: Epic 4 - Actual vs. claimed value comparison
+FR26: Epic 4 - Verdict generation with sources
+FR27: Epic 2 - Conversation persistence via Chainlit datalayer
+FR28: Epic 2 - New conversation creation
+FR29: Epic 2 - Previous conversation access
+FR30: Epic 2 - Token-by-token streaming
+FR31: Epic 1 - search_indicators MCP tool
+FR32: Epic 1 - get_data MCP tool
+FR33: Epic 1 - get_metadata MCP tool
+FR34: Epic 1 - Pagination handling in data360_client.py
+FR35: Epic 1 - stdio transport for Claude Desktop
+FR36: Epic 1 - HTTP Streamable transport for production
+
+## Epic List
+
+### Epic 1: World Bank Data Access via MCP Server
+Users can search, retrieve, and explore World Bank Data360 climate and development indicators through MCP tools, testable in Claude Desktop from day 1.
+**FRs covered:** FR2, FR3, FR4, FR5, FR6, FR31, FR32, FR33, FR34, FR35, FR36
+**NFRs addressed:** NFR4 (caching prep), NFR7 (HTTPS), NFR9 (graceful API failure), NFR10 (rate limit backoff), NFR11 (cache TTL), NFR12 (transport-agnostic)
+
+### Epic 2: Conversational Climate Data Interface
+Users can ask climate and development questions in natural language via a chat interface and receive streaming, data-backed narrative responses with multi-turn conversation support.
+**FRs covered:** FR1, FR7, FR13, FR14, FR15, FR16, FR17, FR27, FR28, FR29, FR30
+**NFRs addressed:** NFR1 (first token latency), NFR2 (full response time), NFR3 (concurrent sessions), NFR5 (API key security), NFR6 (DB credentials)
+
+### Epic 3: Trust, Citations & LLM Grounding
+Every data response carries verifiable World Bank sources with publication-ready citations, enforced LLM grounding boundaries prevent hallucination, and data freshness is always transparent.
+**FRs covered:** FR8, FR9, FR10, FR11, FR12, FR18, FR19, FR20, FR21, FR22
+**NFRs addressed:** NFR8 (no PII)
+
+### Epic 4: Fact-Check & Claim Verification
+Users can paste a climate or data claim and receive a data-grounded verdict (supported/not supported/partially supported) with World Bank source citations.
+**FRs covered:** FR23, FR24, FR25, FR26
+
+---
+
+## Epic 1: World Bank Data Access via MCP Server
+
+Users can search, retrieve, and explore World Bank Data360 climate and development indicators through MCP tools. The MCP server is standalone, testable in Claude Desktop via stdio, and production-ready via HTTP Streamable.
+
+### Story 1.1: Project Setup and Configuration
+
+As a developer,
+I want to initialize the Data360 Voice project with all dependencies and configuration,
+So that I have a working development environment to build the MCP server.
+
+**Acceptance Criteria:**
+
+**Given** a clean development environment
+**When** running `uv init data360-voice && cd data360-voice && uv add fastmcp httpx`
+**Then** the project is created with pyproject.toml containing all MCP server dependencies
+**And** the project structure includes `mcp_server/__init__.py`, `mcp_server/server.py`, `mcp_server/data360_client.py`, `mcp_server/config.py`
+**And** `mcp_server/config.py` contains base URL (`https://data360api.worldbank.org`), timeout settings, and pagination limits (1000 per page, 5000 cap)
+**And** `.env.example` documents all required environment variables
+**And** `.gitignore` excludes `.env`, `__pycache__`, `.venv`
+**And** `tests/mcp_server/__init__.py` directory structure exists
+
+### Story 1.2: Data360 API Client with Error Handling
+
+As a developer,
+I want an async HTTP client that wraps the World Bank Data360 API with retry logic and structured error handling,
+So that all MCP tools have a reliable, consistent way to call the API.
+
+**Acceptance Criteria:**
+
+**Given** the `data360_client.py` module
+**When** making a successful API call to any Data360 endpoint
+**Then** the client maps Python snake_case parameters to API UPPERCASE parameters (e.g., `database_id` -> `DATABASE_ID`)
+**And** the response preserves all API field names exactly (`DATA_SOURCE`, `COMMENT_TS`, `OBS_VALUE`, etc.)
+**And** the client uses httpx.AsyncClient with configurable timeout
+
+**Given** a Data360 API call that returns a 429 or 5xx error
+**When** the client processes the response
+**Then** it retries with exponential backoff (1s, 2s, 4s, max 3 attempts)
+**And** if all retries fail, returns a structured error: `{"success": False, "error": "<message>", "error_type": "api_error"}`
+
+**Given** a Data360 API call that returns a 4xx client error (not 429)
+**When** the client processes the response
+**Then** it does NOT retry and returns a structured error immediately
+
+**Given** a request for data with more than 1000 records
+**When** the client fetches data
+**Then** it auto-paginates using the `skip` parameter in increments of 1000
+**And** it stops at 5000 records total and sets `truncated: True` in the response
+
+**Given** any API interaction
+**When** logging is invoked
+**Then** the client uses `logging.getLogger(__name__)` (no print statements)
+**And** logs API request/response details at DEBUG level, failures at ERROR level
+
+### Story 1.3: Search Indicators MCP Tool
+
+As a user querying World Bank data,
+I want to search for relevant indicators using natural language,
+So that I can find the right data indicators for my climate or development questions.
+
+**Acceptance Criteria:**
+
+**Given** the MCP server is running
+**When** a user calls `search_indicators(query="drought Brazil")`
+**Then** the tool calls POST `/data360/searchv2` with `{"search": "drought Brazil", "top": 10, "skip": 0}`
+**And** returns `{"success": True, "data": [...], "total_count": N, "returned_count": M, "truncated": False}`
+**And** each result includes indicator ID, name, database_id, and description
+
+**Given** a search with optional parameters
+**When** calling `search_indicators(query="CO2 emissions", top=5, filter="...")`
+**Then** the tool passes all parameters correctly to the API
+
+**Given** a search that returns no results
+**When** the tool processes the empty response
+**Then** it returns `{"success": True, "data": [], "total_count": 0, "returned_count": 0, "truncated": False}`
+
+**Given** the Data360 API is unavailable
+**When** the tool is called
+**Then** it returns `{"success": False, "error": "<descriptive message>", "error_type": "api_error"}`
+
+### Story 1.4: Get Data MCP Tool
+
+As a user exploring climate data,
+I want to retrieve actual data values for specific indicators by country and time period,
+So that I can see the numbers behind climate and development trends.
+
+**Acceptance Criteria:**
+
+**Given** the MCP server is running
+**When** a user calls `get_data(database_id="WB_WDI", indicator="WB_WDI_EN_ATM_CO2E_KT", ref_area="BRA")`
+**Then** the tool calls GET `/data360/data` with the mapped UPPERCASE parameters
+**And** returns data including `OBS_VALUE`, `DATA_SOURCE`, `COMMENT_TS`, `TIME_PERIOD`, `LATEST_DATA`, `INDICATOR`, `REF_AREA`
+**And** all API field names are preserved exactly as returned
+
+**Given** a query with time period filters
+**When** calling `get_data(database_id="WB_WDI", indicator="...", time_period_from="2015", time_period_to="2023")`
+**Then** the tool passes `timePeriodFrom` and `timePeriodTo` parameters correctly
+
+**Given** a query that returns more than 1000 records
+**When** the tool fetches data
+**Then** it auto-paginates internally (via data360_client.py) up to 5000 records
+**And** returns `total_count` from the API so the LLM knows if data was truncated
+
+**Given** no data exists for the requested indicator/country combination
+**When** the tool processes the response
+**Then** it returns `{"success": True, "data": [], "total_count": 0, "returned_count": 0, "truncated": False}`
+
+### Story 1.5: Get Metadata, List Indicators, and Get Disaggregation MCP Tools
+
+As a user exploring World Bank data,
+I want to access indicator metadata, browse available indicators per dataset, and check disaggregation dimensions,
+So that I can understand what data is available and how it's structured.
+
+**Acceptance Criteria:**
+
+**Given** the MCP server is running
+**When** a user calls `get_metadata(query="&$filter=series_description/idno eq 'WB_WDI_SP_POP_TOTL'")`
+**Then** the tool calls POST `/data360/metadata` with the OData query
+**And** returns indicator metadata including description, topics, and data sources
+
+**Given** the MCP server is running
+**When** a user calls `list_indicators(dataset_id="WB_WDI")`
+**Then** the tool calls GET `/data360/indicators?datasetId=WB_WDI`
+**And** returns all available indicators for that dataset
+
+**Given** the MCP server is running
+**When** a user calls `get_disaggregation(dataset_id="WB_WDI", indicator_id="WB_WDI_SP_POP_TOTL")`
+**Then** the tool calls GET `/data360/disaggregation` with the correct parameters
+**And** returns available disaggregation dimensions (SEX, AGE, URBANISATION, etc.)
+
+**Given** any of these three tools encounters an API error
+**When** the error is processed
+**Then** the tool returns a structured error response following the standard format
+**And** never raises an exception
+
+### Story 1.6: Dual Transport and Claude Desktop Testing
+
+As a developer,
+I want the MCP server to work via both stdio (Claude Desktop) and HTTP Streamable (production) transports,
+So that I can test locally in Claude Desktop and deploy for web access without code changes.
+
+**Acceptance Criteria:**
+
+**Given** the MCP server with all 5 tools implemented
+**When** running `fastmcp dev mcp_server/server.py`
+**Then** the MCP Inspector opens and all 5 tools are visible and callable
+
+**Given** the MCP server configured for stdio transport
+**When** installed via `fastmcp install mcp_server/server.py`
+**Then** Claude Desktop can use all 5 tools to query World Bank data end-to-end
+
+**Given** the MCP server configured for HTTP Streamable transport
+**When** started in HTTP mode
+**Then** the server accepts MCP client connections over HTTP
+**And** all 5 tools work identically to stdio mode
+
+**Given** any transport mode
+**When** tools are called
+**Then** tool logic is identical, only the transport layer differs (handled by FastMCP)
+**And** NFR12 (transport-agnostic) is satisfied
+
+### Story 1.7: MCP Server Test Suite
+
+As a developer,
+I want automated tests for the MCP server and API client,
+So that I can verify correctness and catch regressions.
+
+**Acceptance Criteria:**
+
+**Given** the test suite in `tests/mcp_server/`
+**When** running `uv run pytest tests/mcp_server/`
+**Then** all tests pass
+
+**Given** `tests/mcp_server/fixtures/` with sample API responses
+**When** `test_data360_client.py` runs
+**Then** it tests parameter mapping (snake_case to UPPERCASE)
+**And** tests auto-pagination logic
+**And** tests retry behavior on 429/5xx errors
+**And** tests no-retry on 4xx errors
+**And** tests structured error response format
+
+**Given** `test_server.py`
+**When** MCP tool integration tests run
+**Then** each of the 5 tools is tested with mocked API responses
+**And** tests verify the consistent response format (success/error structure)
+**And** tests verify API field names are preserved (DATA_SOURCE, COMMENT_TS, etc.)
+
+---
+
+## Epic 2: Conversational Climate Data Interface
+
+Users can ask climate and development questions in natural language via a Chainlit chat interface and receive streaming, data-backed narrative responses with multi-turn conversation support and session persistence.
+
+### Story 2.1: Chainlit + FastAPI Application Setup
+
+As a developer,
+I want to set up the web application with Chainlit mounted in FastAPI and PostgreSQL for persistence,
+So that users have a chat interface to interact with the system.
+
+**Acceptance Criteria:**
+
+**Given** the existing project with MCP server
+**When** adding web application dependencies (`uv add chainlit fastapi uvicorn asyncpg`)
+**Then** `app/main.py` creates a FastAPI app with Chainlit mounted via `mount_chainlit`
+**And** `app/config.py` loads environment variables for Claude API key, database connection, and MCP server URL
+**And** `.chainlit/config.toml` is generated via `chainlit init`
+**And** running `uvicorn app.main:app --reload` starts the full application
+
+**Given** the application is running
+**When** a user opens the browser
+**Then** the Chainlit chat interface loads in under 2 seconds
+**And** environment variables are used for all secrets (NFR5, NFR6)
+**And** all external API communication uses HTTPS (NFR7)
+
+### Story 2.2: MCP Client Integration with Claude Tool Use
+
+As a user,
+I want my natural language questions to be processed by Claude using the MCP server tools,
+So that my questions are answered with real World Bank data.
+
+**Acceptance Criteria:**
+
+**Given** the Chainlit app is running with MCP client connected to the MCP server
+**When** a user types "What are CO2 emissions in Brazil?"
+**Then** Chainlit sends the message to Claude API with MCP tools available
+**And** Claude selects appropriate tools (search_indicators, then get_data)
+**And** tool calls are displayed as intermediate steps in the Chainlit UI
+**And** the final response contains data from the World Bank Data360 API
+
+**Given** the MCP server is connected via HTTP Streamable transport
+**When** tool calls are made
+**Then** the MCP client (Chainlit native handlers: `@cl.on_mcp_connect`, `@cl.on_mcp_disconnect`) manages the connection
+**And** tool results flow back to Claude for response generation
+
+**Given** the Data360 API is unavailable
+**When** a tool call fails
+**Then** the structured error response is passed to Claude
+**And** Claude narrates the failure transparently to the user (NFR9)
+
+### Story 2.3: Streaming Responses
+
+As a user,
+I want to see the AI's response appear word-by-word in real time,
+So that I don't have to wait for the full response before seeing results.
+
+**Acceptance Criteria:**
+
+**Given** a user sends a question
+**When** Claude generates a response
+**Then** tokens stream to the UI via Socket.IO (Chainlit's WebSocket)
+**And** the first token appears within 3 seconds for uncached queries (NFR1)
+**And** the full response completes within 15 seconds for uncached queries (NFR2)
+
+**Given** Claude is making tool calls before responding
+**When** tool call status changes
+**Then** intermediate steps are displayed (e.g., "Searching indicators...", "Fetching data...")
+**And** the user sees progress before the narrative response begins
+
+### Story 2.4: Narrative Response Generation
+
+As a journalist or researcher,
+I want data presented as contextual narratives describing values, trends, and comparisons,
+So that I can understand and use the data without interpreting raw numbers.
+
+**Acceptance Criteria:**
+
+**Given** a user asks "How has drought increased in Brazil in the last decade?"
+**When** Claude receives data from MCP tools
+**Then** the response describes data values in human-readable narrative form (FR13)
+**And** includes trend descriptions (rising, falling, stable, accelerating) when time-series data is available (FR15)
+
+**Given** a user asks "Compare CO2 emissions between Brazil and India"
+**When** Claude processes multi-country data
+**Then** the response compares data across the requested countries in a single narrative (FR14)
+
+**Given** data has missing years or gaps
+**When** Claude generates the response
+**Then** it flags the gaps transparently (e.g., "Data not available for 2021-2022") (FR16)
+
+**Given** no matching indicator exists for the query
+**When** Claude processes the empty result
+**Then** it responds clearly with "No relevant data found" and suggests alternative queries if appropriate (FR17)
+
+### Story 2.5: Multi-Turn Conversation Support
+
+As a user,
+I want to ask follow-up questions that build on my previous questions,
+So that I can explore data progressively without repeating context.
+
+**Acceptance Criteria:**
+
+**Given** a user asked "What are CO2 emissions in Brazil?" and received an answer
+**When** the user follows up with "How does that compare to Argentina?"
+**Then** Claude uses the conversation context to understand "that" refers to CO2 emissions (FR7)
+**And** the response provides the comparison without the user needing to re-specify the indicator
+
+**Given** a multi-turn conversation
+**When** multiple tool calls are made across turns
+**Then** each response maintains coherent context with previous answers
+
+### Story 2.6: Conversation Persistence and History
+
+As a user,
+I want my conversations saved so I can return to them later,
+So that I don't lose my research progress between sessions.
+
+**Acceptance Criteria:**
+
+**Given** the Chainlit datalayer configured with PostgreSQL
+**When** a user has a conversation
+**Then** the conversation history is persisted to the database (FR27)
+
+**Given** a user returns to the application
+**When** they open the interface
+**Then** they can start a new conversation (FR28)
+**And** they can access previous conversations from the sidebar (FR29)
+
+**Given** PostgreSQL is the persistence backend
+**When** the application starts
+**Then** it connects using credentials from environment variables (NFR6)
+**And** the shared connection pool is used by both FastAPI and Chainlit
+
+---
+
+## Epic 3: Trust, Citations & LLM Grounding
+
+Every data response carries verifiable World Bank sources with publication-ready citations. The LLM grounding boundary is enforced architecturally, preventing hallucination of data, causal explanations, predictions, or external knowledge.
+
+### Story 3.1: System Prompt for LLM Grounding Boundary
+
+As a product owner,
+I want the LLM strictly constrained to narrate only data returned by the API,
+So that users can trust every claim in the response is backed by official World Bank data.
+
+**Acceptance Criteria:**
+
+**Given** the system prompt in `app/chat.py`
+**When** Claude receives data from MCP tools
+**Then** it narrates only the data values, trends, and comparisons present in the tool results (FR18)
+**And** it never adds causal explanations not present in the API data (FR19)
+**And** it never generates predictions or forecasts (FR20)
+**And** it never adds external knowledge or editorial judgment (FR21)
+
+**Given** a user asks "Why did CO2 emissions increase in Brazil?"
+**When** Claude processes the question
+**Then** it responds that it can report what the World Bank indicators show but cannot explain causation beyond what the data contains (FR22)
+
+**Given** a user pushes for opinions or predictions
+**When** Claude processes the follow-up
+**Then** it maintains the grounding boundary and redirects to what the data shows
+
+### Story 3.2: DATA_SOURCE Citation on Every Response
+
+As a journalist,
+I want every data point to include its World Bank source attribution,
+So that I can cite it in my publications with confidence.
+
+**Acceptance Criteria:**
+
+**Given** Claude generates a response containing data values
+**When** the response is displayed
+**Then** every data point includes the `DATA_SOURCE` field from the API response (FR8)
+**And** the `DATA_SOURCE` is extracted from the API, not generated by the LLM
+**And** the indicator code is displayed alongside the source (FR12)
+
+**Given** a response with multiple data points
+**When** data comes from different sources
+**Then** each data point carries its own individual source attribution
+
+**Given** the system prompt instructions
+**When** Claude formats citations
+**Then** they are in publication-ready format suitable for direct use in articles and reports (FR9)
+
+### Story 3.3: Data Freshness Transparency
+
+As a researcher,
+I want to see the most recent data year for every data point and be warned about stale data,
+So that I understand the recency of the information I'm using.
+
+**Acceptance Criteria:**
+
+**Given** Claude generates a response with data
+**When** the response is displayed
+**Then** every data point shows the most recent data year available (FR10)
+**And** the year is extracted from `TIME_PERIOD` / `LATEST_DATA` fields in the API response
+
+**Given** data where the most recent year is more than 2 years old
+**When** the response is generated
+**Then** Claude includes an explicit warning about data staleness (FR11)
+**And** the warning distinguishes between "this is the latest available" vs "more recent data may exist"
+
+**Given** a multi-country comparison where data years differ
+**When** the response is generated
+**Then** each country's data year is shown individually
+**And** discrepancies in data recency are flagged transparently
+
+---
+
+## Epic 4: Fact-Check & Claim Verification
+
+Users can paste a climate or data claim and receive a data-grounded verdict (supported, not supported, partially supported) with World Bank source citations, enabling rapid fact-checking workflows.
+
+### Story 4.1: Claim Input and Indicator Identification
+
+As a fact-checker,
+I want to paste a climate claim and have the system identify the relevant data indicators,
+So that verification starts automatically from my input.
+
+**Acceptance Criteria:**
+
+**Given** a user pastes "Brazil's deforestation dropped 50% since 2020"
+**When** the system processes the input
+**Then** Claude identifies this as a claim to verify (FR23)
+**And** uses `search_indicators` to find relevant forest/deforestation indicators (FR24)
+**And** uses `get_data` to retrieve Brazil's data for the relevant time period
+
+**Given** a claim about a topic with no matching indicators
+**When** the system searches for data
+**Then** it responds transparently that no relevant data was found to verify the claim
+**And** provides whatever partial data is available (e.g., country-level vs. the requested regional level)
+
+### Story 4.2: Verdict Generation with Source Citations
+
+As a fact-checker,
+I want a clear verdict on whether a claim is supported by official data,
+So that I can publish a fact-check with confidence in under 15 seconds.
+
+**Acceptance Criteria:**
+
+**Given** the system has retrieved relevant data for a claim
+**When** generating the verdict
+**Then** it calculates actual values and compares them against the claimed values (FR25)
+**And** returns a clear verdict: "supported", "not supported", or "partially supported" (FR26)
+**And** includes full DATA_SOURCE citations for every data point used in the verdict
+
+**Given** a claim like "Brazil's deforestation dropped 50% since 2020"
+**When** the verdict is generated
+**Then** the response shows the actual data values, the calculated percentage change, and how it compares to the claimed 50%
+**And** includes the exact indicator code, data source, and years used
+
+**Given** the claim is partially correct (e.g., direction is right but magnitude is wrong)
+**When** the verdict is generated
+**Then** the response provides a "partially supported" verdict explaining what is correct and what isn't
+**And** all claims are grounded exclusively in API data (no external knowledge, per the grounding boundary)
+
+**Given** the full fact-check flow
+**When** measuring end-to-end time
+**Then** the verdict with sources is delivered in under 15 seconds (per success criteria)

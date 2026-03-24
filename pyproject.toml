@@ -1,0 +1,14 @@
+[project]
+name = "data360-voice"
+version = "0.1.0"
+description = "Conversational AI tool for querying World Bank climate data with verified citations"
+requires-python = ">=3.12"
+dependencies = [
+    "fastmcp>=3.1.1",
+    "httpx>=0.28.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
