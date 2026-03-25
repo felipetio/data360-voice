@@ -810,7 +810,7 @@ async def search_local_indicators(
 @mcp.tool()
 async def get_temporal_coverage(
     indicator: str,
-    database: str,
+    database_id: str,
 ) -> dict[str, Any]:
     """Check temporal coverage (available years) for an indicator.
 
@@ -821,7 +821,7 @@ async def get_temporal_coverage(
 
     Args:
         indicator: Indicator ID (e.g. 'WB_WDI_SP_POP_TOTL').
-        database: Database ID (e.g. 'WB_WDI').
+        database_id: Database ID (e.g. 'WB_WDI').
 
     Returns:
         dict with success, start_year, end_year, latest_year,
@@ -845,7 +845,7 @@ def compare_countries(
     """
     return f"""Compare {indicator} across {countries}. Follow these steps:
 1. Use search_local_indicators to find the exact indicator code for "{indicator}"
-2. Use get_temporal_coverage to check data availability for each country
+2. Use get_temporal_coverage to check overall temporal coverage (available years) for this indicator
 3. Use get_data to retrieve values for each country
 4. Present results in a ranked markdown table with columns: Country, Value, Year, Source
 Include DATA_SOURCE citations for every data point."""
@@ -870,9 +870,10 @@ Retrieve data for these key indicators:
 - Access to electricity (EG_ELC_ACCS_ZS)
 
 For each indicator:
-1. Use get_temporal_coverage to find the latest available year
-2. Use get_data to retrieve the most recent value
-3. Present as a structured summary with DATA_SOURCE citations"""
+1. Use search_indicators to resolve the short code to the full indicator ID and database_id
+2. Use get_temporal_coverage to find the latest available year
+3. Use get_data to retrieve the most recent value
+4. Present as a structured summary with DATA_SOURCE citations"""
 
 @mcp.prompt()
 def trend_analysis(
@@ -969,7 +970,7 @@ _metadata_indicators: list[dict] | None = None
 DATA_DIR = Path(__file__).parent
 
 
-def _load_json(filename: str) -> list[dict]:
+def _load_json(filename: str) -> list[dict] | dict:
     """Load a JSON file from the mcp_server directory."""
     path = DATA_DIR / filename
     with open(path) as f:
@@ -1085,7 +1086,7 @@ def search_local_metadata(query: str, limit: int = 20) -> list[dict[str, Any]]:
 ### Temporal Coverage Data Flow
 
 ```
-get_temporal_coverage(indicator="WB_WDI_SP_POP_TOTL", database="WB_WDI")
+get_temporal_coverage(indicator="WB_WDI_SP_POP_TOTL", database_id="WB_WDI")
     │
     ▼
 data360_client._request("POST", "/data360/metadata",

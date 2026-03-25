@@ -668,7 +668,7 @@ So that the MCP server can offer instant indicator discovery without API calls.
 **Then** it contains ~25-30 indicators across 7 climate-weighted categories (Climate & Environment, Energy, Demographics, Economy, Health, Infrastructure, Agriculture & Land Use)
 **And** each indicator has `category`, `code`, `name`, and `description` fields
 **And** the category distribution is weighted toward climate/environment topics (at least 40% of indicators)
-**And** indicator codes match the exact codes used by the Data360 API (e.g. `EN_ATM_CO2E_KT`)
+**And** indicator codes match the short codes used by the Data360 API (e.g. `EN_ATM_CO2E_KT`), which map to fully-qualified indicator IDs via the `{database}_{code}` convention (e.g. `WB_WDI_EN_ATM_CO2E_KT`)
 **And** the JSON file loads in under 100ms
 
 ### Story 5.2: Metadata Indicators Data File
