@@ -13,7 +13,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: uv sync --frozen
+      - run: uv sync --group dev --frozen
       - run: uv run ruff check .
       - run: uv run ruff format --check .
 
@@ -25,5 +25,5 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: uv sync --frozen
+      - run: uv sync --group dev --frozen
       - run: uv run python -m pytest -v
