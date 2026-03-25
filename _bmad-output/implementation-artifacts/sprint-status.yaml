@@ -1,5 +1,5 @@
 # generated: 2026-03-24
-# last_updated: 2026-03-24
+# last_updated: 2026-03-25
 # project: bmad
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-24
-last_updated: 2026-03-24
+last_updated: 2026-03-25
 project: bmad
 project_key: NOKEY
 tracking_system: file-system
@@ -48,7 +48,7 @@ development_status:
   1-2-data360-api-client-with-error-handling: done
   1-3-search-indicators-mcp-tool: done
   1-4-get-data-mcp-tool: done
-  1-5-get-metadata-list-indicators-and-get-disaggregation-mcp-tools: review
+  1-5-get-metadata-list-indicators-and-get-disaggregation-mcp-tools: done
   1-6-dual-transport-and-claude-desktop-testing: backlog
   1-7-mcp-server-test-suite: backlog
   epic-1-retrospective: optional
@@ -75,3 +75,25 @@ development_status:
   4-1-claim-input-and-indicator-identification: backlog
   4-2-verdict-generation-with-source-citations: backlog
   epic-4-retrospective: optional
+
+  # Epic 5: Offline Local Indicator Discovery
+  epic-5: backlog
+  5-1-popular-indicators-data-file: backlog
+  5-2-metadata-indicators-data-file: backlog
+  5-3-list-popular-indicators-mcp-tool: backlog
+  5-4-search-local-indicators-mcp-tool: backlog
+  5-5-offline-indicator-search-test-suite: backlog
+  epic-5-retrospective: optional
+
+  # Epic 6: Temporal Coverage Check
+  epic-6: backlog
+  6-1-get-temporal-coverage-mcp-tool: backlog
+  6-2-temporal-coverage-test-suite: backlog
+  epic-6-retrospective: optional
+
+  # Epic 7: MCP Prompts & Resources
+  epic-7: backlog
+  7-1-mcp-prompt-definitions: backlog
+  7-2-mcp-resource-definitions: backlog
+  7-3-mcp-prompts-and-resources-test-suite: backlog
+  epic-7-retrospective: optional

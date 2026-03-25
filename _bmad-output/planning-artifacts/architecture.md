@@ -750,3 +750,404 @@ chainlit run app/chat.py
 4. Create `mcp_server/server.py` (FastMCP server with 5 tools)
 5. Test with `fastmcp dev mcp_server/server.py` (Inspector)
 6. Install in Claude Desktop with `fastmcp install mcp_server/server.py`
+
+---
+
+## Architecture Addendum: Epics 5-7 (Offline Search, Temporal Coverage, MCP Prompts)
+
+_Added 2026-03-25. These features extend the MCP server (Epic 1 scope) with offline indicator discovery, temporal coverage checks, and MCP prompts/resources. Inspired by the [llnOrmll/world-bank-data-mcp](https://github.com/llnOrmll/world-bank-data-mcp) reference implementation, adapted to Data360 Voice's existing patterns and climate-focused mission._
+
+### New Files
+
+```
+mcp_server/
+├── server.py                    # Existing: add 3 new tools, 3 prompts, 3 resources
+├── data360_client.py            # Existing: no changes needed
+├── config.py                    # Existing: add DATA360_LOCAL_SEARCH_LIMIT default
+├── popular_indicators.json      # NEW: ~25-30 curated climate/development indicators
+├── metadata_indicators.json     # NEW: ~1500 indicator metadata for offline search
+└── indicator_cache.py           # NEW: singleton loader + relevance search logic
+```
+
+### New Tool Signatures
+
+```python
+@mcp.tool()
+async def list_popular_indicators() -> dict[str, Any]:
+    """List curated popular climate and development indicators.
+
+    Returns a categorized list of ~25-30 commonly requested indicators
+    with codes, names, and descriptions. No API call required - instant results.
+
+    Returns:
+        dict with success, data (list of indicators grouped by category),
+        total_count, returned_count, truncated.
+    """
+
+@mcp.tool()
+async def search_local_indicators(
+    query: str,
+    limit: int = 20,
+) -> dict[str, Any]:
+    """Search indicator metadata offline using local cached data.
+
+    Performs instant substring matching against ~1500 indicator codes,
+    names, and descriptions. Results are ranked by relevance score.
+    Use this for fast discovery before calling search_indicators for
+    full API results.
+
+    Note: Results include indicator codes but NOT database IDs.
+    Call search_indicators to get the database_id needed for get_data.
+
+    Args:
+        query: Search term (case-insensitive). Matches against code, name, description.
+        limit: Maximum results to return (1-100, default 20).
+
+    Returns:
+        dict with success, query, total_matches, data (list with indicator,
+        name, description, source, relevance_score), note.
+    """
+
+@mcp.tool()
+async def get_temporal_coverage(
+    indicator: str,
+    database_id: str,
+) -> dict[str, Any]:
+    """Check temporal coverage (available years) for an indicator.
+
+    Call this BEFORE get_data to know which years have data,
+    preventing API failures on invalid year ranges.
+
+    Recommended workflow: search_indicators → get_temporal_coverage → get_data
+
+    Args:
+        indicator: Indicator ID (e.g. 'WB_WDI_SP_POP_TOTL').
+        database_id: Database ID (e.g. 'WB_WDI').
+
+    Returns:
+        dict with success, start_year, end_year, latest_year,
+        available_years (list of ints).
+    """
+```
+
+### New Prompt Definitions
+
+```python
+@mcp.prompt()
+def compare_countries(
+    indicator: str,
+    countries: str,
+) -> str:
+    """Guide a multi-country comparison for a specific indicator.
+
+    Args:
+        indicator: The indicator to compare (e.g. "CO2 emissions per capita").
+        countries: Comma-separated country names or codes (e.g. "Brazil, India, Germany").
+    """
+    return f"""Compare {indicator} across {countries}. Follow these steps:
+1. Use search_local_indicators to find the exact indicator code for "{indicator}"
+2. Use get_temporal_coverage to check overall temporal coverage (available years) for this indicator
+3. Use get_data to retrieve values for each country
+4. Present results in a ranked markdown table with columns: Country, Value, Year, Source
+Include DATA_SOURCE citations for every data point."""
+
+@mcp.prompt()
+def country_profile(
+    country: str,
+) -> str:
+    """Generate a comprehensive development profile for a country.
+
+    Args:
+        country: Country name or ISO code (e.g. "Brazil" or "BRA").
+    """
+    return f"""Create a comprehensive climate and development profile for {country}.
+Retrieve data for these key indicators:
+- Population (SP_POP_TOTL)
+- GDP (NY_GDP_MKTP_CD)
+- GDP per capita (NY_GDP_PCAP_CD)
+- CO2 emissions (EN_ATM_CO2E_KT)
+- Forest area (AG_LND_FRST_ZS)
+- Renewable energy consumption (EG_FNL_RNEW_ZS)
+- Access to electricity (EG_ELC_ACCS_ZS)
+
+For each indicator:
+1. Use search_indicators to resolve the short code to the full indicator ID and database_id
+2. Use get_temporal_coverage to find the latest available year
+3. Use get_data to retrieve the most recent value
+4. Present as a structured summary with DATA_SOURCE citations"""
+
+@mcp.prompt()
+def trend_analysis(
+    indicator: str,
+    country: str,
+    start_year: str = "2010",
+    end_year: str = "2023",
+) -> str:
+    """Analyze trends for an indicator over time in a specific country.
+
+    Args:
+        indicator: The indicator to analyze (e.g. "deforestation rate").
+        country: Country name or ISO code.
+        start_year: Start of analysis period (default "2010").
+        end_year: End of analysis period (default "2023").
+    """
+    return f"""Analyze the trend for {indicator} in {country} from {start_year} to {end_year}.
+1. Use search_local_indicators to find the exact indicator code
+2. Use get_temporal_coverage to verify data availability in the requested range
+3. Use get_data with time_period_from="{start_year}" and time_period_to="{end_year}"
+4. Filter the results to the requested year range
+5. Analyze the trend pattern:
+   - Direction: rising, falling, or stable
+   - Rate: accelerating, decelerating, or linear
+   - Notable inflection points or outliers
+Present data in a markdown table and describe the trend narrative with DATA_SOURCE citations."""
+```
+
+### New Resource Definitions
+
+```python
+@mcp.resource("data360://popular-indicators")
+def popular_indicators_resource() -> str:
+    """Curated list of popular climate and development indicators."""
+    # Returns JSON string from popular_indicators.json
+    return json.dumps(indicator_cache.get_popular_indicators())
+
+@mcp.resource("data360://databases")
+def databases_resource() -> str:
+    """Available World Bank databases."""
+    return json.dumps({
+        "databases": [
+            {"id": "WB_WDI", "name": "World Development Indicators",
+             "description": "Comprehensive development data, 1400+ indicators"},
+            {"id": "WB_HNP", "name": "Health, Nutrition and Population Statistics",
+             "description": "Health and demographic data"},
+            {"id": "WB_GDF", "name": "Global Development Finance",
+             "description": "External debt and financial flows"},
+            {"id": "WB_IDS", "name": "International Debt Statistics",
+             "description": "Debt statistics for developing countries"},
+        ]
+    })
+
+@mcp.resource("data360://workflow")
+def workflow_resource() -> str:
+    """Recommended 3-step data retrieval workflow."""
+    return """# Data360 Voice: Recommended Data Retrieval Workflow
+
+## Step 1: Find Indicators
+Use `search_local_indicators` for instant offline search, or `search_indicators`
+for full API-backed search. Offline search is faster but does not return database_id.
+
+## Step 2: Check Temporal Coverage
+Use `get_temporal_coverage` with the indicator code and database_id to discover
+which years have data. This prevents wasted API calls on empty year ranges.
+
+## Step 3: Retrieve Data
+Use `get_data` with the indicator, database_id, country, and year range from
+Step 2. Always include DATA_SOURCE citations in your response.
+
+## Tips
+- Use `list_popular_indicators` to discover commonly requested indicators
+- Use the `data360://databases` resource to see available databases
+- Always check temporal coverage before requesting specific year ranges
+"""
+```
+
+### Indicator Cache Design (`indicator_cache.py`)
+
+```python
+"""Singleton loader and relevance search for offline indicator data."""
+
+import json
+import logging
+from pathlib import Path
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+# Module-level singleton state
+_popular_indicators: list[dict] | None = None
+_metadata_indicators: list[dict] | None = None
+
+DATA_DIR = Path(__file__).parent
+
+
+def _load_json(filename: str) -> list[dict] | dict:
+    """Load a JSON file from the mcp_server directory."""
+    path = DATA_DIR / filename
+    with open(path) as f:
+        return json.load(f)
+
+
+def get_popular_indicators() -> dict[str, Any]:
+    """Return curated popular indicators (loaded once, cached in memory)."""
+    global _popular_indicators
+    if _popular_indicators is None:
+        data = _load_json("popular_indicators.json")
+        _popular_indicators = data.get("indicators", data)
+        logger.info("Loaded %d popular indicators", len(_popular_indicators))
+    return {"indicators": _popular_indicators, "total": len(_popular_indicators)}
+
+
+def get_metadata_indicators() -> list[dict]:
+    """Return full metadata indicator list (loaded once, cached in memory)."""
+    global _metadata_indicators
+    if _metadata_indicators is None:
+        _metadata_indicators = _load_json("metadata_indicators.json")
+        logger.info("Loaded %d metadata indicators", len(_metadata_indicators))
+    return _metadata_indicators
+
+
+def search_local_metadata(query: str, limit: int = 20) -> list[dict[str, Any]]:
+    """Search indicator metadata with relevance scoring.
+
+    Scoring:
+      - Exact code match: 100
+      - Code substring: 90
+      - Word in name: 80
+      - Substring in name: 70
+      - Description match: 40
+    """
+    indicators = get_metadata_indicators()
+    query_lower = query.lower()
+    query_words = query_lower.split()
+    results = []
+
+    for ind in indicators:
+        code = ind.get("code", "").lower()
+        name = ind.get("name", "").lower()
+        desc = ind.get("description", "").lower()
+        score = 0
+
+        if query_lower == code:
+            score = 100
+        elif query_lower in code:
+            score = 90
+        elif any(word in name.split() for word in query_words):
+            score = 80
+        elif query_lower in name:
+            score = 70
+        elif query_lower in desc:
+            score = 40
+
+        if score > 0:
+            results.append({
+                "indicator": ind.get("code", ""),
+                "name": ind.get("name", ""),
+                "description": (ind.get("description", "")[:200]
+                               if len(ind.get("description", "")) > 200
+                               else ind.get("description", "")),
+                "source": (ind.get("source", "")[:100]
+                          if len(ind.get("source", "")) > 100
+                          else ind.get("source", "")),
+                "relevance_score": score,
+            })
+
+    results.sort(key=lambda x: x["relevance_score"], reverse=True)
+    return results[:limit]
+```
+
+### Popular Indicators JSON Schema (Climate-Focused Curation)
+
+```json
+{
+  "total_indicators": 28,
+  "description": "Curated list of climate and development indicators for Data360 Voice",
+  "categories": [
+    "Climate & Environment",
+    "Energy",
+    "Demographics",
+    "Economy",
+    "Health",
+    "Infrastructure",
+    "Agriculture & Land Use"
+  ],
+  "indicators": [
+    {
+      "category": "Climate & Environment",
+      "code": "EN_ATM_CO2E_KT",
+      "name": "CO2 emissions (kt)",
+      "description": "Carbon dioxide emissions from fossil fuel combustion and industrial processes"
+    }
+  ]
+}
+```
+
+**Category Distribution (climate-weighted):**
+
+| Category | Count | Examples |
+|----------|-------|---------|
+| Climate & Environment | 6 | CO2 emissions, methane, PM2.5, forest area, protected areas, renewable water |
+| Energy | 5 | Renewable consumption, electricity access, fossil fuel %, energy use per capita, clean cooking |
+| Demographics | 3 | Population, urban %, population growth |
+| Economy | 4 | GDP, GDP per capita, trade % GDP, agriculture % GDP |
+| Health | 3 | Life expectancy, mortality under-5, access to water |
+| Infrastructure | 3 | Internet users, electricity from renewables, road density |
+| Agriculture & Land Use | 4 | Arable land, cereal yield, fertilizer consumption, deforestation |
+
+### Temporal Coverage Data Flow
+
+```
+get_temporal_coverage(indicator="WB_WDI_SP_POP_TOTL", database_id="WB_WDI")
+    │
+    ▼
+data360_client._request("POST", "/data360/metadata",
+    json_body={"query": "&$filter=series_description/idno eq 'WB_WDI_SP_POP_TOTL'"})
+    │
+    ▼
+Extract time_periods from response.series_description
+    │
+    ▼
+Return: {
+    "success": True,
+    "start_year": 1960,
+    "end_year": 2023,
+    "latest_year": 2023,
+    "available_years": [1960, 1961, ..., 2023]
+}
+```
+
+### Updated Implementation Sequence
+
+After Epic 1 core tools (existing):
+
+7. Create `mcp_server/popular_indicators.json` (curated climate indicators)
+8. Create `mcp_server/metadata_indicators.json` (extracted from Data360 API)
+9. Create `mcp_server/indicator_cache.py` (singleton loader + search)
+10. Add `list_popular_indicators` and `search_local_indicators` tools to `server.py`
+11. Add `get_temporal_coverage` tool to `server.py`
+12. Add MCP prompts (`compare_countries`, `country_profile`, `trend_analysis`) to `server.py`
+13. Add MCP resources (`data360://popular-indicators`, `data360://databases`, `data360://workflow`) to `server.py`
+14. Test all new tools with `fastmcp dev` and Claude Desktop
+
+### Updated Project Directory Structure
+
+```
+mcp_server/
+├── __init__.py
+├── server.py                    # FastMCP server: 8 tools, 3 prompts, 3 resources
+├── data360_client.py            # Async World Bank API client
+├── config.py                    # ENV config + DATA360_LOCAL_SEARCH_LIMIT
+├── indicator_cache.py           # Singleton loader + relevance search
+├── popular_indicators.json      # ~28 curated climate/development indicators
+└── metadata_indicators.json     # ~1500 indicator metadata for offline search
+```
+
+### Updated FR Category Mapping
+
+| FR Category | Primary Location | Key Files |
+|------------|-----------------|-----------|
+| Offline Discovery (FR37-40) | `mcp_server/` | `indicator_cache.py`, `popular_indicators.json`, `metadata_indicators.json`, `server.py` |
+| Temporal Coverage (FR41-43) | `mcp_server/` | `server.py` (tool), `data360_client.py` (API call) |
+| MCP Prompts & Resources (FR44-48) | `mcp_server/` | `server.py` (prompts, resources) |
+
+### Updated Architectural Boundaries
+
+**Boundary 1 (extended): MCP Server ↔ World Bank API**
+- `data360_client.py` remains the ONLY module that makes HTTP calls
+- `get_temporal_coverage` calls through `data360_client.py`, not directly
+- `indicator_cache.py` reads local JSON files only, never makes API calls
+
+**New Boundary: MCP Server ↔ Local Data Files**
+- `indicator_cache.py` is the ONLY module that reads JSON data files
+- `server.py` calls `indicator_cache` functions, never reads JSON directly
+- Data files are read-only at runtime, loaded once via singleton pattern

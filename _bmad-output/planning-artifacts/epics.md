@@ -57,6 +57,18 @@ FR33: The MCP server can retrieve indicator metadata via the Data360 /metadata e
 FR34: The MCP server can handle pagination for large result sets (>1000 records)
 FR35: The MCP server can operate via stdio transport (for Claude Desktop development)
 FR36: The MCP server can operate via HTTP Streamable transport (for web production)
+FR37: The MCP server can return a curated list of popular climate and development indicators without any API call
+FR38: The MCP server can search local indicator metadata offline using relevance-scored substring matching
+FR39: Offline search results include relevance scores so the LLM can prioritize the best matches
+FR40: Indicator metadata and popular indicator data are loaded once and cached in memory for the server lifetime
+FR41: The MCP server can check the temporal coverage (start year, end year, available years) for a given indicator and database
+FR42: Temporal coverage extraction uses the existing metadata endpoint with OData filtering
+FR43: The MCP server enforces a 3-step data retrieval workflow: search indicators → check temporal coverage → retrieve data
+FR44: The MCP server provides a compare_countries prompt that guides multi-country indicator comparison
+FR45: The MCP server provides a country_profile prompt that generates a comprehensive country summary across key indicators
+FR46: The MCP server provides a trend_analysis prompt that guides time-series trend exploration for an indicator
+FR47: The MCP server exposes discoverable resources for popular indicators and available databases
+FR48: The MCP server exposes a workflow resource documenting the recommended 3-step data retrieval process
 
 ### NonFunctional Requirements
 
@@ -72,6 +84,8 @@ NFR9: The system must handle Data360 API unavailability gracefully with clear us
 NFR10: The system must handle Claude API rate limits with exponential backoff
 NFR11: Cached API responses must have configurable TTL (default: 24 hours for data, indefinite for metadata)
 NFR12: The MCP server must be transport-agnostic, supporting both stdio and HTTP Streamable without code changes to tool logic
+NFR13: Offline indicator search must return results in under 50ms (no network calls)
+NFR14: Popular indicators and metadata files must load into memory in under 500ms at server startup
 
 ### Additional Requirements
 
@@ -132,6 +146,18 @@ FR33: Epic 1 - get_metadata MCP tool
 FR34: Epic 1 - Pagination handling in data360_client.py
 FR35: Epic 1 - stdio transport for Claude Desktop
 FR36: Epic 1 - HTTP Streamable transport for production
+FR37: Epic 5 - Popular indicators list via list_popular_indicators tool
+FR38: Epic 5 - Offline indicator search via search_local_indicators tool
+FR39: Epic 5 - Relevance scoring in offline search results
+FR40: Epic 5 - Singleton caching for indicator data files
+FR41: Epic 6 - Temporal coverage check via get_temporal_coverage tool
+FR42: Epic 6 - OData filter-based year extraction from metadata endpoint
+FR43: Epic 6 - 3-step workflow enforcement (search → coverage → data)
+FR44: Epic 7 - compare_countries MCP prompt
+FR45: Epic 7 - country_profile MCP prompt
+FR46: Epic 7 - trend_analysis MCP prompt
+FR47: Epic 7 - MCP resources for indicator and database discovery
+FR48: Epic 7 - Workflow documentation resource
 
 ## Epic List
 
@@ -153,6 +179,21 @@ Every data response carries verifiable World Bank sources with publication-ready
 ### Epic 4: Fact-Check & Claim Verification
 Users can paste a climate or data claim and receive a data-grounded verdict (supported/not supported/partially supported) with World Bank source citations.
 **FRs covered:** FR23, FR24, FR25, FR26
+
+### Epic 5: Offline Local Indicator Discovery
+Users can instantly discover and search World Bank indicators without any API call, enabling faster workflows and resilience when the Data360 API is slow or unavailable.
+**FRs covered:** FR37, FR38, FR39, FR40
+**NFRs addressed:** NFR13 (offline search <50ms), NFR14 (startup load <500ms)
+
+### Epic 6: Temporal Coverage Check
+Users can check which years have data for a given indicator before requesting data, preventing failed API calls and enabling smarter data retrieval workflows.
+**FRs covered:** FR41, FR42, FR43
+**NFRs addressed:** NFR9 (graceful API failure), NFR12 (transport-agnostic)
+
+### Epic 7: MCP Prompts & Resources
+The MCP server provides guided workflow prompts and discoverable resources that help LLM clients execute common data analysis patterns with consistent quality and proper citations.
+**FRs covered:** FR44, FR45, FR46, FR47, FR48
+**NFRs addressed:** NFR12 (transport-agnostic)
 
 ---
 
@@ -604,3 +645,268 @@ So that I can publish a fact-check with confidence in under 15 seconds.
 **Given** the full fact-check flow
 **When** measuring end-to-end time
 **Then** the verdict with sources is delivered in under 15 seconds (per success criteria)
+
+---
+
+## Epic 5: Offline Local Indicator Discovery
+
+Users can instantly discover and search World Bank indicators without any API call, enabling faster workflows and resilience when the Data360 API is slow or unavailable. A curated set of climate-focused popular indicators provides an opinionated starting point.
+
+**FRs covered:** FR37, FR38, FR39, FR40
+**NFRs addressed:** NFR13 (offline search <50ms), NFR14 (startup load <500ms)
+
+### Story 5.1: Popular Indicators Data File
+
+As a developer,
+I want a curated JSON file of ~25-30 popular climate and development indicators,
+So that the MCP server can offer instant indicator discovery without API calls.
+
+**Acceptance Criteria:**
+
+**Given** the file `mcp_server/popular_indicators.json`
+**When** loaded by the MCP server
+**Then** it contains ~25-30 indicators across 7 climate-weighted categories (Climate & Environment, Energy, Demographics, Economy, Health, Infrastructure, Agriculture & Land Use)
+**And** each indicator has `category`, `code`, `name`, and `description` fields
+**And** the category distribution is weighted toward climate/environment topics (at least 40% of indicators)
+**And** indicator codes match the short codes used by the Data360 API (e.g. `EN_ATM_CO2E_KT`), which map to fully-qualified indicator IDs via the `{database}_{code}` convention (e.g. `WB_WDI_EN_ATM_CO2E_KT`)
+**And** the JSON file loads in under 100ms
+
+### Story 5.2: Metadata Indicators Data File
+
+As a developer,
+I want a comprehensive JSON file of ~1500 indicator metadata records,
+So that users can search the full indicator catalog offline.
+
+**Acceptance Criteria:**
+
+**Given** the file `mcp_server/metadata_indicators.json`
+**When** loaded by the MCP server
+**Then** it contains ~1500 indicator metadata records extracted from the Data360 API
+**And** each record has `code`, `name`, `description`, and `source` fields
+**And** the file loads into memory in under 500ms (NFR14)
+**And** a script or documented process exists to regenerate this file from the live API
+
+### Story 5.3: list_popular_indicators MCP Tool
+
+As a user exploring World Bank data,
+I want to see a curated list of popular climate and development indicators,
+So that I can quickly discover relevant indicators without knowing exact codes.
+
+**Acceptance Criteria:**
+
+**Given** the MCP server is running
+**When** a user calls `list_popular_indicators()`
+**Then** the tool returns the curated indicator list from `popular_indicators.json` (FR37)
+**And** no API call is made to the Data360 API
+**And** the response follows the standard format: `{"success": True, "data": [...], "total_count": N, "returned_count": N, "truncated": False}`
+**And** indicators are grouped by category in the response
+**And** the response is returned in under 50ms (NFR13)
+
+**Given** the MCP server has not yet loaded the popular indicators file
+**When** `list_popular_indicators()` is called for the first time
+**Then** the file is loaded once and cached in memory via the singleton pattern (FR40)
+**And** subsequent calls reuse the cached data without re-reading the file
+
+### Story 5.4: search_local_indicators MCP Tool
+
+As a user querying World Bank data,
+I want to search indicator metadata offline with instant results,
+So that I can quickly find relevant indicators before making API calls.
+
+**Acceptance Criteria:**
+
+**Given** the MCP server is running
+**When** a user calls `search_local_indicators(query="CO2 emissions")`
+**Then** the tool searches the local metadata cache using relevance scoring (FR38):
+  - Exact code match: score 100
+  - Code substring: score 90
+  - Word in indicator name: score 80
+  - Substring in indicator name: score 70
+  - Substring in description: score 40
+**And** returns results sorted by relevance score descending (FR39)
+**And** the response includes: `{"success": True, "query": "CO2 emissions", "total_matches": N, "data": [...], "note": "Local search - instant results from cached metadata"}`
+**And** each result includes `indicator`, `name`, `description` (truncated to 200 chars), `source` (truncated to 100 chars), and `relevance_score`
+**And** the response is returned in under 50ms (NFR13)
+
+**Given** `search_local_indicators(query="xyz", limit=5)`
+**When** more than 5 results match
+**Then** only the top 5 by relevance score are returned
+
+**Given** a search with no matches
+**When** the query doesn't match any indicator
+**Then** the tool returns `{"success": True, "query": "xyz", "total_matches": 0, "data": [], "note": "No local matches found. Try search_indicators for API-based search."}`
+
+**Given** the metadata file has not been loaded yet
+**When** `search_local_indicators()` is called for the first time
+**Then** the metadata file is loaded once and cached in memory (FR40)
+
+### Story 5.5: Offline Indicator Search Test Suite
+
+As a developer,
+I want automated tests for the offline search tools and indicator cache,
+So that I can verify correctness and catch regressions.
+
+**Acceptance Criteria:**
+
+**Given** the test suite in `tests/mcp_server/`
+**When** running `uv run pytest tests/mcp_server/test_indicator_cache.py`
+**Then** all tests pass
+
+**Given** `test_indicator_cache.py`
+**When** tests run
+**Then** it tests relevance scoring (exact code match gets 100, code substring gets 90, etc.)
+**And** tests result ordering (highest relevance first)
+**And** tests limit parameter (returns at most `limit` results)
+**And** tests empty query results
+**And** tests singleton caching (file loaded only once across multiple calls)
+**And** tests `list_popular_indicators` returns correct structure
+**And** tests `search_local_indicators` returns correct response format
+
+---
+
+## Epic 6: Temporal Coverage Check
+
+Users can check which years have data for a given indicator before requesting data, preventing failed API calls and enabling smarter data retrieval workflows.
+
+**FRs covered:** FR41, FR42, FR43
+**NFRs addressed:** NFR9 (graceful API failure), NFR12 (transport-agnostic)
+
+### Story 6.1: get_temporal_coverage MCP Tool
+
+As a user exploring climate data,
+I want to check what years have data for an indicator before requesting data,
+So that I can avoid failed API calls and know the data availability upfront.
+
+**Acceptance Criteria:**
+
+**Given** the MCP server is running
+**When** a user calls `get_temporal_coverage(indicator="WB_WDI_SP_POP_TOTL", database="WB_WDI")`
+**Then** the tool calls the existing `get_metadata` endpoint via `data360_client.py` with OData filter: `"&$filter=series_description/idno eq 'WB_WDI_SP_POP_TOTL'"` (FR42)
+**And** extracts `time_periods` from the `series_description` in the metadata response
+**And** returns: `{"success": True, "start_year": 1960, "end_year": 2023, "latest_year": 2023, "available_years": [1960, 1961, ..., 2023]}`
+
+**Given** the indicator has no temporal coverage data in the metadata
+**When** the tool processes the response
+**Then** it returns `{"success": True, "start_year": null, "end_year": null, "latest_year": null, "available_years": [], "note": "No temporal coverage data found for this indicator"}`
+
+**Given** the Data360 API is unavailable
+**When** the tool is called
+**Then** it returns the standard error format: `{"success": False, "error": "<descriptive message>", "error_type": "api_error"}`
+
+**Given** the tool docstring
+**When** Claude reads the tool description
+**Then** the description recommends the 3-step workflow: `search_indicators → get_temporal_coverage → get_data` (FR43)
+
+### Story 6.2: Temporal Coverage Test Suite
+
+As a developer,
+I want automated tests for the temporal coverage tool,
+So that I can verify correct metadata extraction and error handling.
+
+**Acceptance Criteria:**
+
+**Given** the test suite in `tests/mcp_server/`
+**When** running temporal coverage tests
+**Then** all tests pass
+
+**Given** `test_temporal_coverage.py`
+**When** tests run
+**Then** it tests successful year extraction from mocked metadata response
+**And** tests empty coverage scenario (no time_periods in metadata)
+**And** tests API error handling (returns structured error)
+**And** tests that the tool uses `data360_client.py` (not direct HTTP calls)
+**And** tests response format matches the standard structure
+
+---
+
+## Epic 7: MCP Prompts & Resources
+
+The MCP server provides guided workflow prompts and discoverable resources that help LLM clients execute common data analysis patterns (country comparisons, profiles, trend analysis) with consistent quality and proper citations.
+
+**FRs covered:** FR44, FR45, FR46, FR47, FR48
+**NFRs addressed:** NFR12 (transport-agnostic)
+
+### Story 7.1: MCP Prompt Definitions
+
+As a user exploring climate data,
+I want guided workflow prompts for common analysis patterns,
+So that I get comprehensive, well-structured results with proper citations every time.
+
+**Acceptance Criteria:**
+
+**Given** the MCP server is running
+**When** a client lists available prompts
+**Then** three prompts are available: `compare_countries`, `country_profile`, `trend_analysis`
+
+**Given** a user invokes `compare_countries(indicator="CO2 emissions", countries="Brazil, India, Germany")`
+**When** the prompt is rendered
+**Then** it returns a 4-step instruction guiding: search indicator → check coverage → retrieve data → present ranked markdown table (FR44)
+**And** the instructions specify DATA_SOURCE citations for every data point
+
+**Given** a user invokes `country_profile(country="Brazil")`
+**When** the prompt is rendered
+**Then** it returns instructions to retrieve 7 key climate and development indicators: population, GDP, GDP per capita, CO2 emissions, forest area, renewable energy, electricity access (FR45)
+**And** instructions include checking temporal coverage for each indicator
+**And** the output format is a structured summary with DATA_SOURCE citations
+
+**Given** a user invokes `trend_analysis(indicator="deforestation", country="Brazil", start_year="2010", end_year="2023")`
+**When** the prompt is rendered
+**Then** it returns a 5-step instruction guiding: search → coverage → retrieve → filter years → analyze trend pattern (FR46)
+**And** trend pattern analysis includes direction (rising/falling/stable), rate (accelerating/decelerating/linear), and inflection points
+**And** the output format includes a markdown data table and narrative description
+
+**Given** default parameters for `trend_analysis`
+**When** `start_year` and `end_year` are not specified
+**Then** they default to "2010" and "2023" respectively
+
+### Story 7.2: MCP Resource Definitions
+
+As a developer or LLM client,
+I want discoverable resources that document available databases and recommended workflows,
+So that I can use the MCP server effectively without reading external documentation.
+
+**Acceptance Criteria:**
+
+**Given** the MCP server is running
+**When** a client lists available resources
+**Then** three resources are available: `data360://popular-indicators`, `data360://databases`, `data360://workflow` (FR47, FR48)
+
+**Given** a client reads `data360://popular-indicators`
+**When** the resource is returned
+**Then** it contains the curated popular indicators JSON from `popular_indicators.json`
+**And** indicators are categorized and include code, name, and description
+
+**Given** a client reads `data360://databases`
+**When** the resource is returned
+**Then** it lists 4 World Bank databases: WB_WDI, WB_HNP, WB_GDF, WB_IDS
+**And** each database includes `id`, `name`, and `description`
+
+**Given** a client reads `data360://workflow`
+**When** the resource is returned
+**Then** it contains markdown documentation of the recommended 3-step workflow: find indicators → check temporal coverage → retrieve data (FR48)
+**And** includes tips for using popular indicators and offline search
+
+### Story 7.3: MCP Prompts & Resources Test Suite
+
+As a developer,
+I want automated tests for all prompts and resources,
+So that I can verify they render correctly and return expected content.
+
+**Acceptance Criteria:**
+
+**Given** the test suite in `tests/mcp_server/`
+**When** running prompts and resources tests
+**Then** all tests pass
+
+**Given** `test_prompts.py`
+**When** tests run
+**Then** it tests each prompt renders with required parameters
+**And** tests default parameter values for `trend_analysis`
+**And** tests that rendered prompts contain key workflow steps
+**And** tests that prompts mention DATA_SOURCE citations
+
+**Given** `test_resources.py`
+**When** tests run
+**Then** it tests `data360://popular-indicators` returns valid JSON with indicator list
+**And** tests `data360://databases` returns all 4 databases
+**And** tests `data360://workflow` returns markdown with 3-step workflow
