@@ -438,3 +438,29 @@ Performance targets are defined in the Web Application Specific Requirements sec
 - NFR10: The system must handle Claude API rate limits with exponential backoff
 - NFR11: Cached API responses must have configurable TTL (default: 24 hours for data, indefinite for metadata)
 - NFR12: The MCP server must be transport-agnostic, supporting both stdio and HTTP Streamable without code changes to tool logic
+
+### Offline Indicator Discovery
+
+- FR37: The MCP server can return a curated list of popular climate and development indicators without any API call
+- FR38: The MCP server can search local indicator metadata offline using relevance-scored substring matching
+- FR39: Offline search results include relevance scores so the LLM can prioritize the best matches
+- FR40: Indicator metadata and popular indicator data are loaded once and cached in memory for the server lifetime
+
+### Temporal Coverage
+
+- FR41: The MCP server can check the temporal coverage (start year, end year, available years) for a given indicator and database
+- FR42: Temporal coverage extraction uses the existing metadata endpoint with OData filtering
+- FR43: The MCP server enforces a 3-step data retrieval workflow: search indicators → check temporal coverage → retrieve data
+
+### MCP Prompts & Resources
+
+- FR44: The MCP server provides a `compare_countries` prompt that guides multi-country indicator comparison
+- FR45: The MCP server provides a `country_profile` prompt that generates a comprehensive country summary across key indicators
+- FR46: The MCP server provides a `trend_analysis` prompt that guides time-series trend exploration for an indicator
+- FR47: The MCP server exposes discoverable resources for popular indicators and available databases
+- FR48: The MCP server exposes a workflow resource documenting the recommended 3-step data retrieval process
+
+### Offline Performance
+
+- NFR13: Offline indicator search must return results in under 50ms (no network calls)
+- NFR14: Popular indicators and metadata files must load into memory in under 500ms at server startup
