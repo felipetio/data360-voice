@@ -236,3 +236,9 @@ async def get_disaggregation(
     except Exception as exc:
         logger.error("get_disaggregation failed: %s", exc)
         return {"success": False, "error": str(exc), "error_type": "api_error"}
+
+
+if __name__ == "__main__":
+    import os
+    transport = os.getenv("MCP_TRANSPORT", "stdio")
+    mcp.run(transport=transport)

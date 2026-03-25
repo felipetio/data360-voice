@@ -49,8 +49,8 @@ development_status:
   1-3-search-indicators-mcp-tool: done
   1-4-get-data-mcp-tool: done
   1-5-get-metadata-list-indicators-and-get-disaggregation-mcp-tools: done
-  1-6-dual-transport-and-claude-desktop-testing: backlog
-  1-7-mcp-server-test-suite: backlog
+  1-6-dual-transport-and-claude-desktop-testing: review
+  1-7-mcp-server-test-suite: ready-for-dev
   epic-1-retrospective: optional
 
   # Epic 2: Conversational Climate Data Interface
