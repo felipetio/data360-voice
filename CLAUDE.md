@@ -46,16 +46,11 @@ uv run pre-commit install
 uv run pre-commit run --all-files
 ```
 
-## Code Quality Rules
+## Code Quality
 
-This project enforces code quality via ruff (linter + formatter) and pre-commit hooks. All code must pass these checks before committing.
-
-- **Always run `uv run ruff check .` and `uv run ruff format --check .` before considering work complete.**
-- **Never disable or skip ruff rules** without explicit approval. Do not add `# noqa` comments or `# fmt: off` blocks.
-- **Ruff is configured in `pyproject.toml`** with rules: E (pycodestyle errors), F (pyflakes), W (pycodestyle warnings), I (isort). Line length is 120 characters.
-- **Pre-commit hooks run automatically on every commit** — ruff check (with auto-fix) and ruff format. If a commit fails due to formatting, the files are auto-fixed; re-stage and commit again.
-- **Import ordering follows isort conventions** (stdlib, third-party, local) enforced by the `I` rule set.
-- **Excluded directories**: `.claude` and `_bmad` are excluded from ruff checks (tooling scaffolding, not project code).
+- All code must pass `uv run ruff check .` and `uv run ruff format .` — pre-commit hooks enforce this automatically.
+- Never add `# noqa` or `# fmt: off` without explicit approval.
+- Ruff config is in `pyproject.toml`: line length 120, rules E/F/W/I (isort).
 
 ## Architecture
 
