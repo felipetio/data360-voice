@@ -94,7 +94,11 @@ class Data360Client:
                         delay = self.retry_backoff_base * (2**attempt)
                         logger.warning(
                             "Retryable error %d from %s, attempt %d/%d, retrying in %.1fs",
-                            response.status_code, url, attempt + 1, self.max_retries, delay,
+                            response.status_code,
+                            url,
+                            attempt + 1,
+                            self.max_retries,
+                            delay,
                         )
                         await asyncio.sleep(delay)
                         continue
