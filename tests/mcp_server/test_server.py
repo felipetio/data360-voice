@@ -2,12 +2,12 @@
 
 import json
 from pathlib import Path
-
-import pytest
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from mcp_server.data360_client import Data360Client
-from mcp_server.server import search_indicators, get_data, get_metadata, list_indicators, get_disaggregation
+from mcp_server.server import get_data, get_disaggregation, get_metadata, list_indicators, search_indicators
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -56,7 +56,8 @@ class TestSearchIndicators:
         await search_indicators(query="test")
 
         mock_client._request.assert_called_once_with(
-            "POST", "/data360/searchv2",
+            "POST",
+            "/data360/searchv2",
             json_body={"search": "test", "top": 10, "skip": 0, "count": True},
         )
 
@@ -68,7 +69,8 @@ class TestSearchIndicators:
         await search_indicators(query="CO2", top=5, skip=10, filter="some filter")
 
         mock_client._request.assert_called_once_with(
-            "POST", "/data360/searchv2",
+            "POST",
+            "/data360/searchv2",
             json_body={"search": "CO2", "top": 5, "skip": 10, "count": True, "filter": "some filter"},
         )
 
@@ -80,7 +82,8 @@ class TestSearchIndicators:
         await search_indicators(query="test", top=10, skip=0)
 
         mock_client._request.assert_called_once_with(
-            "POST", "/data360/searchv2",
+            "POST",
+            "/data360/searchv2",
             json_body={"search": "test", "top": 10, "skip": 0, "count": True},
         )
 
@@ -100,11 +103,13 @@ class TestSearchIndicators:
     @pytest.mark.asyncio
     async def test_api_error_passthrough(self, mock_client):
         """AC4: API errors are passed through directly."""
-        mock_client._request = AsyncMock(return_value={
-            "success": False,
-            "error": "Data360 API returned 503 after 3 retries",
-            "error_type": "api_error",
-        })
+        mock_client._request = AsyncMock(
+            return_value={
+                "success": False,
+                "error": "Data360 API returned 503 after 3 retries",
+                "error_type": "api_error",
+            }
+        )
 
         result = await search_indicators(query="test")
 
@@ -115,11 +120,13 @@ class TestSearchIndicators:
     @pytest.mark.asyncio
     async def test_timeout_error_passthrough(self, mock_client):
         """AC4: Timeout errors are passed through directly."""
-        mock_client._request = AsyncMock(return_value={
-            "success": False,
-            "error": "Request timed out: TimeoutError",
-            "error_type": "timeout",
-        })
+        mock_client._request = AsyncMock(
+            return_value={
+                "success": False,
+                "error": "Request timed out: TimeoutError",
+                "error_type": "timeout",
+            }
+        )
 
         result = await search_indicators(query="test")
 
@@ -129,10 +136,12 @@ class TestSearchIndicators:
     @pytest.mark.asyncio
     async def test_total_count_from_odata(self, mock_client):
         """AC1: total_count comes from @odata.count, not len(results)."""
-        mock_client._request = AsyncMock(return_value={
-            "@odata.count": 150,
-            "value": [{"id": f"IND_{i}"} for i in range(10)],
-        })
+        mock_client._request = AsyncMock(
+            return_value={
+                "@odata.count": 150,
+                "value": [{"id": f"IND_{i}"} for i in range(10)],
+            }
+        )
 
         result = await search_indicators(query="test", top=10)
 
@@ -144,10 +153,12 @@ class TestSearchIndicators:
     @pytest.mark.asyncio
     async def test_not_truncated_when_all_returned(self, mock_client):
         """AC1: truncated is False when returned_count equals total_count."""
-        mock_client._request = AsyncMock(return_value={
-            "@odata.count": 3,
-            "value": [{"id": f"IND_{i}"} for i in range(3)],
-        })
+        mock_client._request = AsyncMock(
+            return_value={
+                "@odata.count": 3,
+                "value": [{"id": f"IND_{i}"} for i in range(3)],
+            }
+        )
 
         result = await search_indicators(query="test")
 
@@ -185,13 +196,15 @@ class TestGetData:
     async def test_successful_data_retrieval(self, mock_client):
         """AC1: Successful retrieval returns data with preserved API field names."""
         fixture = _load_fixture("data_response.json")
-        mock_client._paginated_get = AsyncMock(return_value={
-            "success": True,
-            "data": fixture["value"],
-            "total_count": fixture["count"],
-            "returned_count": fixture["count"],
-            "truncated": False,
-        })
+        mock_client._paginated_get = AsyncMock(
+            return_value={
+                "success": True,
+                "data": fixture["value"],
+                "total_count": fixture["count"],
+                "returned_count": fixture["count"],
+                "truncated": False,
+            }
+        )
 
         result = await get_data(database_id="WB_SSGD", indicator="WB_SSGD_CO2_EMISSIONS", ref_area="BRA")
 
@@ -209,9 +222,15 @@ class TestGetData:
     @pytest.mark.asyncio
     async def test_required_parameters_mapped_to_uppercase(self, mock_client):
         """AC1: Required parameters are mapped to UPPERCASE via _paginated_get."""
-        mock_client._paginated_get = AsyncMock(return_value={
-            "success": True, "data": [], "total_count": 0, "returned_count": 0, "truncated": False,
-        })
+        mock_client._paginated_get = AsyncMock(
+            return_value={
+                "success": True,
+                "data": [],
+                "total_count": 0,
+                "returned_count": 0,
+                "truncated": False,
+            }
+        )
 
         await get_data(database_id="WB_WDI", indicator="WB_WDI_EN_ATM_CO2E_KT")
 
@@ -222,9 +241,15 @@ class TestGetData:
     @pytest.mark.asyncio
     async def test_optional_ref_area_mapped_to_uppercase(self, mock_client):
         """AC1: Optional ref_area is mapped to UPPERCASE."""
-        mock_client._paginated_get = AsyncMock(return_value={
-            "success": True, "data": [], "total_count": 0, "returned_count": 0, "truncated": False,
-        })
+        mock_client._paginated_get = AsyncMock(
+            return_value={
+                "success": True,
+                "data": [],
+                "total_count": 0,
+                "returned_count": 0,
+                "truncated": False,
+            }
+        )
 
         await get_data(database_id="WB_WDI", indicator="IND", ref_area="BRA")
 
@@ -235,27 +260,40 @@ class TestGetData:
     @pytest.mark.asyncio
     async def test_time_period_params_camel_case(self, mock_client):
         """AC2: Time period params use camelCase (timePeriodFrom, timePeriodTo)."""
-        mock_client._paginated_get = AsyncMock(return_value={
-            "success": True, "data": [], "total_count": 0, "returned_count": 0, "truncated": False,
-        })
+        mock_client._paginated_get = AsyncMock(
+            return_value={
+                "success": True,
+                "data": [],
+                "total_count": 0,
+                "returned_count": 0,
+                "truncated": False,
+            }
+        )
 
         await get_data(
-            database_id="WB_WDI", indicator="IND",
-            time_period_from="2015", time_period_to="2023",
+            database_id="WB_WDI",
+            indicator="IND",
+            time_period_from="2015",
+            time_period_to="2023",
         )
 
         mock_client._paginated_get.assert_called_once_with(
             "/data360/data",
-            {"DATABASE_ID": "WB_WDI", "INDICATOR": "IND",
-             "timePeriodFrom": "2015", "timePeriodTo": "2023"},
+            {"DATABASE_ID": "WB_WDI", "INDICATOR": "IND", "timePeriodFrom": "2015", "timePeriodTo": "2023"},
         )
 
     @pytest.mark.asyncio
     async def test_none_optional_params_excluded(self, mock_client):
         """AC2: None optional params are not included in the params dict."""
-        mock_client._paginated_get = AsyncMock(return_value={
-            "success": True, "data": [], "total_count": 0, "returned_count": 0, "truncated": False,
-        })
+        mock_client._paginated_get = AsyncMock(
+            return_value={
+                "success": True,
+                "data": [],
+                "total_count": 0,
+                "returned_count": 0,
+                "truncated": False,
+            }
+        )
 
         await get_data(database_id="WB_WDI", indicator="IND")
 
@@ -266,13 +304,15 @@ class TestGetData:
     @pytest.mark.asyncio
     async def test_paginated_response_passthrough(self, mock_client):
         """AC3: Paginated response with truncation is passed through."""
-        mock_client._paginated_get = AsyncMock(return_value={
-            "success": True,
-            "data": [{"OBS_VALUE": str(i)} for i in range(5000)],
-            "total_count": 5000,
-            "returned_count": 5000,
-            "truncated": True,
-        })
+        mock_client._paginated_get = AsyncMock(
+            return_value={
+                "success": True,
+                "data": [{"OBS_VALUE": str(i)} for i in range(5000)],
+                "total_count": 5000,
+                "returned_count": 5000,
+                "truncated": True,
+            }
+        )
 
         result = await get_data(database_id="WB_WDI", indicator="IND")
 
@@ -283,9 +323,15 @@ class TestGetData:
     @pytest.mark.asyncio
     async def test_empty_results(self, mock_client):
         """AC4: No data returns correct empty format."""
-        mock_client._paginated_get = AsyncMock(return_value={
-            "success": True, "data": [], "total_count": 0, "returned_count": 0, "truncated": False,
-        })
+        mock_client._paginated_get = AsyncMock(
+            return_value={
+                "success": True,
+                "data": [],
+                "total_count": 0,
+                "returned_count": 0,
+                "truncated": False,
+            }
+        )
 
         result = await get_data(database_id="WB_WDI", indicator="IND", ref_area="XYZ")
 
@@ -298,11 +344,13 @@ class TestGetData:
     @pytest.mark.asyncio
     async def test_api_error_passthrough(self, mock_client):
         """AC4: API errors are passed through."""
-        mock_client._paginated_get = AsyncMock(return_value={
-            "success": False,
-            "error": "Data360 API returned 500 after 3 retries",
-            "error_type": "api_error",
-        })
+        mock_client._paginated_get = AsyncMock(
+            return_value={
+                "success": False,
+                "error": "Data360 API returned 500 after 3 retries",
+                "error_type": "api_error",
+            }
+        )
 
         result = await get_data(database_id="WB_WDI", indicator="IND")
 
@@ -324,9 +372,15 @@ class TestGetData:
     async def test_calls_enrich_citation_source(self, mock_client):
         """get_data calls enrich_citation_source on successful results."""
         data = [{"OBS_VALUE": "1", "DATABASE_ID": "WB_SSGD"}]
-        mock_client._paginated_get = AsyncMock(return_value={
-            "success": True, "data": data, "total_count": 1, "returned_count": 1, "truncated": False,
-        })
+        mock_client._paginated_get = AsyncMock(
+            return_value={
+                "success": True,
+                "data": data,
+                "total_count": 1,
+                "returned_count": 1,
+                "truncated": False,
+            }
+        )
 
         await get_data(database_id="WB_SSGD", indicator="IND")
 
@@ -335,9 +389,15 @@ class TestGetData:
     @pytest.mark.asyncio
     async def test_skips_enrich_on_empty_data(self, mock_client):
         """get_data does not call enrich_citation_source when data is empty."""
-        mock_client._paginated_get = AsyncMock(return_value={
-            "success": True, "data": [], "total_count": 0, "returned_count": 0, "truncated": False,
-        })
+        mock_client._paginated_get = AsyncMock(
+            return_value={
+                "success": True,
+                "data": [],
+                "total_count": 0,
+                "returned_count": 0,
+                "truncated": False,
+            }
+        )
 
         await get_data(database_id="WB_WDI", indicator="IND")
 
@@ -346,9 +406,13 @@ class TestGetData:
     @pytest.mark.asyncio
     async def test_skips_enrich_on_error(self, mock_client):
         """get_data does not call enrich_citation_source on API error."""
-        mock_client._paginated_get = AsyncMock(return_value={
-            "success": False, "error": "fail", "error_type": "api_error",
-        })
+        mock_client._paginated_get = AsyncMock(
+            return_value={
+                "success": False,
+                "error": "fail",
+                "error_type": "api_error",
+            }
+        )
 
         await get_data(database_id="WB_WDI", indicator="IND")
 
@@ -384,17 +448,20 @@ class TestGetMetadata:
         await get_metadata(query="&$filter=series_description/database_id eq 'WB_WDI'")
 
         mock_client._request.assert_called_once_with(
-            "POST", "/data360/metadata",
+            "POST",
+            "/data360/metadata",
             json_body={"query": "&$filter=series_description/database_id eq 'WB_WDI'"},
         )
 
     @pytest.mark.asyncio
     async def test_total_count_from_odata(self, mock_client):
         """AC1: total_count comes from @odata.count."""
-        mock_client._request = AsyncMock(return_value={
-            "@odata.count": 50,
-            "value": [{"id": "META_1"}],
-        })
+        mock_client._request = AsyncMock(
+            return_value={
+                "@odata.count": 50,
+                "value": [{"id": "META_1"}],
+            }
+        )
 
         result = await get_metadata(query="&$filter=series_description/database_id eq 'WB_WDI'&$top=1")
 
@@ -417,9 +484,13 @@ class TestGetMetadata:
     @pytest.mark.asyncio
     async def test_api_error_passthrough(self, mock_client):
         """AC4: API errors are passed through."""
-        mock_client._request = AsyncMock(return_value={
-            "success": False, "error": "Data360 API returned 500 after 3 retries", "error_type": "api_error",
-        })
+        mock_client._request = AsyncMock(
+            return_value={
+                "success": False,
+                "error": "Data360 API returned 500 after 3 retries",
+                "error_type": "api_error",
+            }
+        )
 
         result = await get_metadata(query="&$filter=bad")
 
@@ -464,7 +535,8 @@ class TestListIndicators:
         await list_indicators(dataset_id="WB_WDI")
 
         mock_client._request.assert_called_once_with(
-            "GET", "/data360/indicators",
+            "GET",
+            "/data360/indicators",
             params={"datasetId": "WB_WDI"},
         )
 
@@ -483,9 +555,13 @@ class TestListIndicators:
     @pytest.mark.asyncio
     async def test_api_error_passthrough(self, mock_client):
         """AC4: API errors are passed through."""
-        mock_client._request = AsyncMock(return_value={
-            "success": False, "error": "Data360 API returned 404: Not Found", "error_type": "api_error",
-        })
+        mock_client._request = AsyncMock(
+            return_value={
+                "success": False,
+                "error": "Data360 API returned 404: Not Found",
+                "error_type": "api_error",
+            }
+        )
 
         result = await list_indicators(dataset_id="BAD")
 
@@ -534,7 +610,8 @@ class TestGetDisaggregation:
         await get_disaggregation(dataset_id="WB_WDI", indicator_id="WB_WDI_SP_POP_TOTL")
 
         mock_client._request.assert_called_once_with(
-            "GET", "/data360/disaggregation",
+            "GET",
+            "/data360/disaggregation",
             params={"datasetId": "WB_WDI", "indicatorId": "WB_WDI_SP_POP_TOTL"},
         )
 
@@ -546,7 +623,8 @@ class TestGetDisaggregation:
         await get_disaggregation(dataset_id="WB_WDI")
 
         mock_client._request.assert_called_once_with(
-            "GET", "/data360/disaggregation",
+            "GET",
+            "/data360/disaggregation",
             params={"datasetId": "WB_WDI"},
         )
 
@@ -565,9 +643,13 @@ class TestGetDisaggregation:
     @pytest.mark.asyncio
     async def test_api_error_passthrough(self, mock_client):
         """AC4: API errors are passed through."""
-        mock_client._request = AsyncMock(return_value={
-            "success": False, "error": "Data360 API returned 500 after 3 retries", "error_type": "api_error",
-        })
+        mock_client._request = AsyncMock(
+            return_value={
+                "success": False,
+                "error": "Data360 API returned 500 after 3 retries",
+                "error_type": "api_error",
+            }
+        )
 
         result = await get_disaggregation(dataset_id="WB_WDI")
 

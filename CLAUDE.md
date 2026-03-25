@@ -26,6 +26,18 @@ uv add <package>
 
 # Add a dev dependency
 uv add --group dev <package>
+
+# Lint check
+uv run ruff check .
+
+# Format check
+uv run ruff format --check .
+
+# Auto-fix lint issues
+uv run ruff check --fix .
+
+# Auto-format
+uv run ruff format .
 ```
 
 ## Architecture
