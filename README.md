@@ -22,7 +22,7 @@ All responses include citation fields (`DATA_SOURCE` / `CITATION_SOURCE`) so Cla
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.12+
 - [uv](https://docs.astral.sh/uv/) (package manager)
 - Claude Desktop (for desktop integration)
 

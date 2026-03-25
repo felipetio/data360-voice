@@ -90,13 +90,13 @@ No API keys required — World Bank Data360 is a public API.
 ### Key Learnings from Story 1.5
 
 - `mcp_server/server.py` currently has no `__main__` entrypoint; only FastMCP CLI commands work
-- Fixture pattern for tests: `mock_client` fixture in `tests/mcp_server/conftest.py`
+- Fixture pattern for tests: `mock_client` fixture in `tests/mcp_server/test_server.py`
 - 93 tests passing as of Story 1.5 — do NOT break them
 - Citation source enrichment (`enrich_citation_source`) is in `data360_client.py` and called by `get_data` — this flows transparently across transports
 
 ### Files to Touch
 
-- `mcp_server/server.py` — add `__main__` block only (no tool logic changes)
+- `mcp_server/server.py` — add `__main__` block and wire/configure lifespan context manager (no tool logic changes)
 - Possibly `tests/mcp_server/test_server.py` — no new unit tests required; transport is FastMCP's concern
 - `CLAUDE.md` or README — update with HTTP transport command if desired (out of scope for this story)
 
@@ -104,7 +104,7 @@ No API keys required — World Bank Data360 is a public API.
 
 - **Do NOT** add transport-specific logic inside tool functions — transport is purely FastMCP's layer
 - **Do NOT** duplicate tool registration or create a second FastMCP instance for HTTP mode
-- **Do NOT** change `_client = Data360Client()` — it's module-level and shared across transports
+- **Do NOT** introduce or rely on a module-level `_client = Data360Client()` — the client is lifespan-managed in `_lifespan` and shared across transports via that mechanism
 - **Do NOT** add a new config.py setting for transport — env var in `__main__` is sufficient
 
 ### Project Structure Notes
@@ -117,7 +117,6 @@ mcp_server/
   config.py          (no changes)
 tests/mcp_server/
   test_server.py     (no changes expected)
-  conftest.py        (no changes)
 ```
 
 ### References

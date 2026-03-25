@@ -77,9 +77,7 @@ tests/
 
 ### Architecture: Where to Mock
 
-The `_client` is a **module-level singleton** in `mcp_server/server.py`:
-```python
-_client = Data360Client()
+The `_client` is a **module-level variable** in `mcp_server/server.py`. It is defined as `None` at import time and initialized with a `Data360Client` instance inside the FastMCP lifespan context manager:
 ```
 
 All tests mock at this boundary using `unittest.mock.patch`:
