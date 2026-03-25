@@ -35,8 +35,34 @@ uv add <package>
 
 # Add a dev dependency
 uv add --group dev <package>
+
+# Lint check
+uv run ruff check .
+
+# Format check
+uv run ruff format --check .
+
+# Auto-fix lint issues
+uv run ruff check --fix .
+
+# Auto-format
+uv run ruff format .
+
+# Install pre-commit hooks (first time setup)
+uv run pre-commit install
+
+# Run pre-commit on all files
+uv run pre-commit run --all-files
 ```
 
+<<<<<<< feature/wbdata-mcp-server2
+=======
+## Code Quality
+
+- All code must pass `uv run ruff check .` and `uv run ruff format .` — pre-commit hooks enforce this automatically.
+- Never add `# noqa` or `# fmt: off` without explicit approval.
+- Ruff config is in `pyproject.toml`: line length 120, rules E/F/W/I (isort).
+>>>>>>> main
 
 ## Architecture
 

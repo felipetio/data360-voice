@@ -1,9 +1,7 @@
 """Tests for Data360Client (Story 1.2)."""
 
-import asyncio
-import json
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -79,9 +77,7 @@ class TestRequest:
     @pytest.mark.asyncio
     async def test_retry_on_429(self, client):
         mock_http = _make_mock_client()
-        mock_http.request = AsyncMock(
-            side_effect=[_mock_response(429), _mock_response(200, {"value": []})]
-        )
+        mock_http.request = AsyncMock(side_effect=[_mock_response(429), _mock_response(200, {"value": []})])
         client._client = mock_http
 
         result = await client._request("GET", "/data360/data")
@@ -223,9 +219,7 @@ class TestPaginatedGet:
     @pytest.mark.asyncio
     async def test_truncation_at_max_records(self, client):
         mock_http = _make_mock_client()
-        mock_http.request = AsyncMock(
-            return_value=_mock_response(200, {"value": [{"i": i} for i in range(1000)]})
-        )
+        mock_http.request = AsyncMock(return_value=_mock_response(200, {"value": [{"i": i} for i in range(1000)]}))
         client._client = mock_http
 
         result = await client._paginated_get("/data360/data", {"DATABASE_ID": "WB_WDI"})
@@ -291,7 +285,12 @@ class TestDbNameCache:
     def test_populates_from_search_results(self):
         client = Data360Client()
         results = [
-            {"series_description": {"database_id": "WB_SSGD", "database_name": "Social sustainability global database"}},
+            {
+                "series_description": {
+                    "database_id": "WB_SSGD",
+                    "database_name": "Social sustainability global database",
+                },
+            },
             {"series_description": {"database_id": "OWID_CB", "database_name": "CO2 and Greenhouse Gas Emissions"}},
         ]
         client.cache_db_names(results)
@@ -319,7 +318,6 @@ class TestDbNameCache:
         client.cache_db_names([{"series_description": {"database_id": "X", "database_name": "Old"}}])
         client.cache_db_names([{"series_description": {"database_id": "X", "database_name": "New"}}])
         assert client._db_name_cache["X"] == "New"
-
 
     @pytest.mark.asyncio
     async def test_resolve_rejects_single_quote_injection(self):
@@ -394,7 +392,9 @@ class TestEnrichCitationSource:
     async def test_calls_resolve_on_cache_miss(self):
         """On cache miss, resolve_db_name does a fallback search."""
         client = Data360Client()
-        search_result = {"value": [{"series_description": {"database_id": "WB_SSGD", "database_name": "SSGD Full Name"}}]}
+        search_result = {
+            "value": [{"series_description": {"database_id": "WB_SSGD", "database_name": "SSGD Full Name"}}]
+        }
         mock_http = _make_mock_client()
         mock_http.request = AsyncMock(return_value=_mock_response(200, search_result))
         client._client = mock_http
