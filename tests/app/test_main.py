@@ -1,6 +1,6 @@
 """Smoke tests for the FastAPI app startup."""
 
-import os
+import importlib
 
 import pytest
 
@@ -15,9 +15,6 @@ def set_required_env_vars(monkeypatch):
 
 def test_fastapi_app_imports_without_error():
     """The FastAPI app module should be importable when env vars are set."""
-    # Force re-evaluation with the monkeypatched env vars in place
-    import importlib
-
     import app.config
     import app.main
 
@@ -30,11 +27,11 @@ def test_fastapi_app_imports_without_error():
     assert app.title == "Data360 Voice"
 
 
-def test_fastapi_app_has_correct_title(set_required_env_vars):
+def test_fastapi_app_has_correct_title():
     """FastAPI app title should be 'Data360 Voice'."""
-    # Ensure env is set before importing config
-    os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
-    os.environ.setdefault("DATABASE_URL", "postgresql://user:password@localhost:5432/testdb")
+    import app.main
+
+    importlib.reload(app.main)
 
     from app.main import app
 
@@ -47,15 +44,10 @@ def test_config_loads_with_valid_env(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
     monkeypatch.setenv("MCP_SERVER_URL", "http://mcp.example.com:8001")
 
-    import importlib
-
-    import app.config
-
-    importlib.reload(app.config)
-
     from app.config import Settings
 
-    settings = Settings()
+    # Pass _env_file=None to prevent reading a local .env file during tests
+    settings = Settings(_env_file=None)
     assert settings.anthropic_api_key == "sk-ant-test"
     assert settings.database_url == "postgresql://user:pass@localhost:5432/db"
     assert settings.mcp_server_url == "http://mcp.example.com:8001"
@@ -69,5 +61,6 @@ def test_config_default_mcp_server_url(monkeypatch):
 
     from app.config import Settings
 
-    settings = Settings()
+    # Pass _env_file=None so a local .env won't override the deleted var
+    settings = Settings(_env_file=None)
     assert settings.mcp_server_url == "http://localhost:8001"
