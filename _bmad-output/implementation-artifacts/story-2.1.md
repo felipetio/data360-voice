@@ -1,6 +1,6 @@
 # Story 2.1: Web Application Setup — Chainlit + FastAPI Scaffolding
 
-Status: in-review
+Status: done
 
 ## Story
 
@@ -169,3 +169,5 @@ anthropic/claude-sonnet-4-6 (via OpenClaw subagent)
 ### Change Log
 
 - 2026-03-26: Implemented all tasks, opened PR #10 against main.
+- 2026-03-26: PR reviewed by Copilot (6 comments). Fixed: added `fastapi` as explicit dep, hardened tests with `_env_file=None`. Two comments dismissed by owner (allow_origins, cot). One clarified (mcp_server_url is intentionally optional).
+- 2026-03-26: Tested locally — `chainlit run app/chat.py --port 8000` confirmed UI loads. Approved and merged to main.
