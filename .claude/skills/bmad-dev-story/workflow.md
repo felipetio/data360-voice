@@ -337,6 +337,8 @@ Load config from `{project-root}/_bmad/bmm/config.yaml` and resolve:
       <action>ONLY THEN mark the task (and subtasks) checkbox with [x]</action>
       <action>Update File List section with ALL new, modified, or deleted files (paths relative to repo root)</action>
       <action>Add completion notes to Dev Agent Record summarizing what was ACTUALLY implemented and tested</action>
+      <!-- COMMIT AFTER EACH TASK (Retro Action Item #3: keeps git clean, enables fast context reload) -->
+      <action>Stage and commit completed task: "feat({{story_key}}): {{task_short_description}}"</action>
     </check>
 
     <check if="ANY validation fails">
