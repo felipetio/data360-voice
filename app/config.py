@@ -8,3 +8,6 @@ class Settings(BaseSettings):
     database_url: str
     mcp_server_url: str = "http://localhost:8001"  # default for local dev
     conversation_history_limit: int = 10  # max number of messages to keep in context
+
+
+settings = Settings()
