@@ -313,7 +313,6 @@ class TestErrorHandling:
         """The error message content must start with the expected warning emoji."""
         sent_messages = []
 
-        orig_call_count = 0
         streaming_msg_mock = AsyncMock()
         streaming_msg_mock.send = AsyncMock()
         streaming_msg_mock.remove = AsyncMock()
@@ -328,7 +327,6 @@ class TestErrorHandling:
                 pass
 
         call_count = 0
-        original_message_cls = None
 
         def make_message(**kwargs):
             nonlocal call_count
