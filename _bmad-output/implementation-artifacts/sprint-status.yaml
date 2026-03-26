@@ -1,5 +1,5 @@
 # generated: 2026-03-24
-# last_updated: 2026-03-25
+# last_updated: 2026-03-26
 # project: bmad
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-24
-last_updated: 2026-03-25
+last_updated: 2026-03-26
 project: bmad
 project_key: NOKEY
 tracking_system: file-system
@@ -43,15 +43,15 @@ story_location: "{project-root}/_bmad-output/implementation-artifacts"
 
 development_status:
   # Epic 1: World Bank Data Access via MCP Server
-  epic-1: in-progress
+  epic-1: done
   1-1-project-setup-and-configuration: done
   1-2-data360-api-client-with-error-handling: done
   1-3-search-indicators-mcp-tool: done
   1-4-get-data-mcp-tool: done
   1-5-get-metadata-list-indicators-and-get-disaggregation-mcp-tools: done
-  1-6-dual-transport-and-claude-desktop-testing: review
-  1-7-mcp-server-test-suite: ready-for-dev
-  epic-1-retrospective: optional
+  1-6-dual-transport-and-claude-desktop-testing: done
+  1-7-mcp-server-test-suite: done
+  epic-1-retrospective: done
 
   # Epic 2: Conversational Climate Data Interface
   epic-2: backlog

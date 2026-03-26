@@ -55,14 +55,11 @@ uv run pre-commit install
 uv run pre-commit run --all-files
 ```
 
-<<<<<<< feature/wbdata-mcp-server2
-=======
 ## Code Quality
 
 - All code must pass `uv run ruff check .` and `uv run ruff format .` — pre-commit hooks enforce this automatically.
 - Never add `# noqa` or `# fmt: off` without explicit approval.
 - Ruff config is in `pyproject.toml`: line length 120, rules E/F/W/I (isort).
->>>>>>> main
 
 ## Architecture
 

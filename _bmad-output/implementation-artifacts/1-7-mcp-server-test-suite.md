@@ -1,6 +1,6 @@
 # Story 1.7: MCP Server Test Suite
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -52,26 +52,26 @@ tests/
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Run and confirm all tests pass (AC #1)
-  - [ ] Run `uv run pytest tests/mcp_server/ -v` — all 75 tests must pass
-  - [ ] If any test fails, investigate and fix (do NOT modify tests to pass, fix the source)
+- [x] Task 1: Run and confirm all tests pass (AC #1)
+  - [x] Run `uv run pytest tests/mcp_server/ -v` — all 75 tests must pass
+  - [x] If any test fails, investigate and fix (do NOT modify tests to pass, fix the source)
 
-- [ ] Task 2: Audit AC2 coverage in `test_data360_client.py` (AC #2)
-  - [ ] Confirm `TestParameterMapping` covers snake_case→UPPERCASE mapping including None skipping
-  - [ ] Confirm `TestPaginatedGet` covers single-page, multi-page, truncation at 5000, and error cases
-  - [ ] Confirm `TestRequest` covers retry on 429, retry on 503, exhausted retries, no-retry on 400/404, timeout, network error, invalid JSON
-  - [ ] Add any missing edge cases (only if genuinely missing, not duplicating existing tests)
+- [x] Task 2: Audit AC2 coverage in `test_data360_client.py` (AC #2)
+  - [x] Confirm `TestParameterMapping` covers snake_case→UPPERCASE mapping including None skipping
+  - [x] Confirm `TestPaginatedGet` covers single-page, multi-page, truncation at 5000, and error cases
+  - [x] Confirm `TestRequest` covers retry on 429, retry on 503, exhausted retries, no-retry on 400/404, timeout, network error, invalid JSON
+  - [x] Add any missing edge cases (only if genuinely missing, not duplicating existing tests)
 
-- [ ] Task 3: Audit AC3 coverage in `test_server.py` (AC #3)
-  - [ ] Confirm each of the 5 tools has: a success test, an error passthrough test, and an unexpected-exception test
-  - [ ] Confirm API field names (DATA_SOURCE, COMMENT_TS, OBS_VALUE, TIME_PERIOD, INDICATOR, REF_AREA, LATEST_DATA) are present in the data_response.json fixture and flow through to test assertions
-  - [ ] Confirm `test_calls_enrich_citation_source` and `test_skips_enrich_on_empty_data` / `test_skips_enrich_on_error` exist in TestGetData
+- [x] Task 3: Audit AC3 coverage in `test_server.py` (AC #3)
+  - [x] Confirm each of the 5 tools has: a success test, an error passthrough test, and an unexpected-exception test
+  - [x] Confirm API field names (DATA_SOURCE, COMMENT_TS, OBS_VALUE, TIME_PERIOD, INDICATOR, REF_AREA, LATEST_DATA) are present in the data_response.json fixture and flow through to test assertions
+  - [x] Confirm `test_calls_enrich_citation_source` and `test_skips_enrich_on_empty_data` / `test_skips_enrich_on_error` exist in TestGetData
 
-- [ ] Task 4: Verify fixtures are accurate (AC #2, #3)
-  - [ ] All 5 fixture files exist in `tests/mcp_server/fixtures/`
-  - [ ] `data_response.json` contains: OBS_VALUE, DATA_SOURCE, COMMENT_TS, TIME_PERIOD, INDICATOR, REF_AREA, LATEST_DATA, DATABASE_ID
-  - [ ] `searchv2_response.json` contains: value[], @odata.count, series_description with database_id/database_name
-  - [ ] No new fixtures needed unless Task 2/3 audit reveals a genuine gap
+- [x] Task 4: Verify fixtures are accurate (AC #2, #3)
+  - [x] All 5 fixture files exist in `tests/mcp_server/fixtures/`
+  - [x] `data_response.json` contains: OBS_VALUE, DATA_SOURCE, COMMENT_TS, TIME_PERIOD, INDICATOR, REF_AREA, LATEST_DATA, DATABASE_ID
+  - [x] `searchv2_response.json` contains: value[], @odata.count, series_description with database_id/database_name
+  - [x] No new fixtures needed unless Task 2/3 audit reveals a genuine gap
 
 ## Dev Notes
 
