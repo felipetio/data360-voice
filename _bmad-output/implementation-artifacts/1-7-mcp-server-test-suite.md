@@ -1,6 +1,6 @@
 # Story 1.7: MCP Server Test Suite
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 

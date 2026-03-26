@@ -408,15 +408,33 @@ Load config from `{project-root}/_bmad/bmm/config.yaml` and resolve:
     <action if="regression failures exist">HALT - Fix regression issues before completing</action>
     <action if="File List is incomplete">HALT - Update File List with all changed files</action>
     <action if="definition-of-done validation fails">HALT - Address DoD failures before completing</action>
+
+    <!-- Commit, push branch, and open PR for Copilot + BMAD review -->
+    <action>Determine branch name: use current git branch if already on a feature branch, otherwise create one named "story/{{story_key}}"</action>
+    <action>Stage all changed files listed in File List (use specific file paths, not git add -A)</action>
+    <action>Commit with a message following the project's commit style: "feat({{story_key}}): &lt;concise summary of changes&gt;"</action>
+    <action>Push branch to remote: git push -u origin &lt;branch&gt;</action>
+    <action>Open a PR using gh pr create with:
+      - title: "{{story_key}}: {{story_title}}"
+      - body: summary of what was implemented, acceptance criteria covered, files changed, and a note that BMAD code review will follow Copilot review
+      - base branch: main
+    </action>
+    <action>Store the PR URL as {{pr_url}}</action>
+    <output>🔀 PR created: {{pr_url}}
+
+      **Review workflow:**
+      1. GitHub Copilot will review the PR automatically (or trigger it manually)
+      2. Once Copilot review is available, run `/bmad-code-review` — it will read the PR diff and Copilot findings together
+    </output>
   </step>
 
   <step n="10" goal="Completion communication and user support">
     <action>Execute the enhanced definition-of-done checklist using the validation framework</action>
     <action>Prepare a concise summary in Dev Agent Record → Completion Notes</action>
 
-    <action>Communicate to {user_name} that story implementation is complete and ready for review</action>
+    <action>Communicate to {user_name} that story implementation is complete, PR is open, and ready for review</action>
     <action>Summarize key accomplishments: story ID, story key, title, key changes made, tests added, files modified</action>
-    <action>Provide the story file path and current status (now "review")</action>
+    <action>Provide the story file path, current status ("review"), and PR URL</action>
 
     <action>Based on {user_skill_level}, ask if user needs any explanations about:
       - What was implemented and how it works
@@ -431,16 +449,16 @@ Load config from `{project-root}/_bmad/bmm/config.yaml` and resolve:
       <action>Use examples and references to specific code when helpful</action>
     </check>
 
-    <action>Once explanations are complete (or user indicates no questions), suggest logical next steps</action>
-    <action>Recommended next steps (flexible based on project setup):
-      - Review the implemented story and test the changes
-      - Verify all acceptance criteria are met
-      - Ensure deployment readiness if applicable
-      - Run `code-review` workflow for peer review
-      - Optional: If Test Architect module installed, run `/bmad:tea:automate` to expand guardrail tests
-    </action>
+    <action>Once explanations are complete (or user indicates no questions), communicate next steps clearly</action>
+    <output>
+      **Next steps:**
+      1. Check the PR: {{pr_url}}
+      2. Wait for GitHub Copilot review (or trigger it from the PR page)
+      3. Run `/bmad-code-review` — the review agent will read the PR diff and Copilot findings together for a richer review
+      4. After review is approved and all feedback addressed, merge the PR
 
-    <output>💡 **Tip:** For best results, run `code-review` using a **different** LLM than the one that implemented this story.</output>
+      💡 **Tip:** Run `/bmad-code-review` using a **different** LLM than the one that implemented this story for best results.
+    </output>
     <check if="{sprint_status} file exists">
       <action>Suggest checking {sprint_status} to see project progress</action>
     </check>
