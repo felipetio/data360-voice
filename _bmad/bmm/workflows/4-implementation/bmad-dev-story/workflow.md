@@ -408,43 +408,142 @@ Load config from `{project-root}/_bmad/bmm/config.yaml` and resolve:
     <action if="regression failures exist">HALT - Fix regression issues before completing</action>
     <action if="File List is incomplete">HALT - Update File List with all changed files</action>
     <action if="definition-of-done validation fails">HALT - Address DoD failures before completing</action>
-  </step>
 
-  <step n="10" goal="Completion communication and user support">
-    <action>Execute the enhanced definition-of-done checklist using the validation framework</action>
-    <action>Prepare a concise summary in Dev Agent Record → Completion Notes</action>
+    <!-- LOCAL CODE REVIEW (before PR) -->
+    <action>Determine branch name: use current git branch if already on a feature branch, otherwise create one named "story/{{story_key}}"</action>
+    <action>Stage all changed files listed in File List (use specific file paths, not git add -A)</action>
+    <action>Commit with a message following the project's commit style: "feat({{story_key}}): &lt;concise summary of changes&gt;"</action>
 
-    <action>Communicate to {user_name} that story implementation is complete and ready for review</action>
-    <action>Summarize key accomplishments: story ID, story key, title, key changes made, tests added, files modified</action>
-    <action>Provide the story file path and current status (now "review")</action>
-
-    <action>Based on {user_skill_level}, ask if user needs any explanations about:
-      - What was implemented and how it works
-      - Why certain technical decisions were made
-      - How to test or verify the changes
-      - Any patterns, libraries, or approaches used
-      - Anything else they'd like clarified
+    <critical>Run /bmad-code-review BEFORE pushing or opening PR. This is the local dev review pass.</critical>
+    <action>Run the bmad-code-review workflow automatically with:
+      - Review mode: branch diff vs main (git diff main...HEAD)
+      - Spec file: the current story file path ({{story_path}})
+      - Skip all interactive prompts — feed diff + spec directly
+      - Same model is fine — this is the local dev review, not an external review
     </action>
+    <action>Collect code review findings</action>
 
-    <check if="user asks for explanations">
-      <action>Provide clear, contextual explanations tailored to {user_skill_level}</action>
-      <action>Use examples and references to specific code when helpful</action>
+    <!-- Address patch findings from code review -->
+    <check if="code review produced 'patch' findings (fixable code issues)">
+      <action>Address ALL patch findings — these are trivially fixable issues</action>
+      <action>Re-run full test suite after fixes to confirm no regressions</action>
+      <action>Re-run linting/formatting</action>
+      <action>Stage and commit fixes: "fix({{story_key}}): address code review findings"</action>
+      <action>Update File List if new files were modified</action>
+      <action>Add to Dev Agent Record: "Code review: addressed N patch findings before PR"</action>
     </check>
 
-    <action>Once explanations are complete (or user indicates no questions), suggest logical next steps</action>
-    <action>Recommended next steps (flexible based on project setup):
-      - Review the implemented story and test the changes
-      - Verify all acceptance criteria are met
-      - Ensure deployment readiness if applicable
-      - Run `code-review` workflow for peer review
-      - Optional: If Test Architect module installed, run `/bmad:tea:automate` to expand guardrail tests
-    </action>
+    <check if="code review produced 'intent_gap' or 'bad_spec' findings">
+      <action>Document these in Dev Agent Record as known issues for human reviewer</action>
+      <action>Include them in the PR description under a "Known Issues / Open Questions" section</action>
+    </check>
 
-    <output>💡 **Tip:** For best results, run `code-review` using a **different** LLM than the one that implemented this story.</output>
+    <check if="code review produced only 'reject' or 'defer' findings, or no findings">
+      <action>Note clean review in Dev Agent Record</action>
+    </check>
+
+    <!-- Push and open PR -->
+    <action>Push branch to remote: git push -u origin &lt;branch&gt;</action>
+    <action>Open a PR using gh pr create with:
+      - title: "{{story_key}}: {{story_title}}"
+      - body: structured PR description (see PR_DESCRIPTION_FORMAT below)
+      - base branch: main
+    </action>
+    <action>Store the PR URL as {{pr_url}}</action>
+
+    <!-- PR_DESCRIPTION_FORMAT:
+      ## What This Does
+      One paragraph: what the story delivers and why it matters.
+
+      ## Key Code to Understand
+      Point out the 2-4 most important pieces of code the reviewer should focus on.
+      For each: file path, what it does, and why it's designed that way.
+      Example:
+      - `mcp_server/client.py` → `_paginated_get()` — handles auto-pagination with a 5000 record cap.
+        This is the core data fetching loop; everything else calls through it.
+      - `mcp_server/server.py` → `search_indicators()` — the main entry point for indicator search.
+        Note how it populates `_db_name_cache` as a side effect for citation enrichment later.
+
+      ## Acceptance Criteria Covered
+      Checklist of ACs from the story, marked as met.
+
+      ## Known Issues / Open Questions
+      (Only if intent_gap or bad_spec findings exist from code review)
+
+      ## Files Changed
+      Grouped list of files changed.
+    -->
+
+    <output>🔀 PR created: {{pr_url}}
+
+      Code review passed locally. PR is ready for {user_name}'s review.
+      Waiting for review feedback or approval.
+    </output>
+  </step>
+
+  <step n="10" goal="Wait for human review, address feedback, merge on approval">
+    <action>Prepare a concise summary in Dev Agent Record → Completion Notes</action>
+    <action>Communicate to {user_name} that story implementation is complete, PR is open, and ready for review</action>
+    <action>Summarize: story key, title, PR URL, key changes, tests added</action>
+
+    <output>
+      **PR ready for review:** {{pr_url}}
+
+      Story {{story_key}} is implemented, code-reviewed locally, and pushed.
+      Copilot will review automatically. Take your time reviewing.
+
+      When you're done, tell me:
+      - "I left comments on the PR" → I'll address them and push fixes
+      - "PR approved" → I'll merge and mark the story done
+    </output>
+
+    <!-- REVIEW FEEDBACK LOOP -->
+    <action>HALT and wait for {user_name} to respond</action>
+
+    <check if="{user_name} says they left comments or requests changes">
+      <action>Fetch PR review comments from GitHub API:
+        - GET /repos/{owner}/{repo}/pulls/{pr_number}/reviews
+        - GET /repos/{owner}/{repo}/pulls/{pr_number}/comments (inline)
+        - GET /repos/{owner}/{repo}/issues/{pr_number}/comments (general)
+      </action>
+      <action>Filter out bot comments (own username) and already-addressed comments</action>
+      <action>For each actionable comment:
+        - Read the referenced file and understand the context
+        - Make the requested change
+        - If the comment is unclear, ask {user_name} for clarification before guessing
+      </action>
+      <action>Run full test suite after all changes</action>
+      <action>Run linting/formatting</action>
+      <action>Commit: "fix({{story_key}}): address review feedback"</action>
+      <action>Push to the same branch</action>
+      <action>Reply to each addressed comment on GitHub:
+        - POST /repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies
+        - Body: "Addressed in commit {short_sha} — {brief description}"
+      </action>
+      <action>Update File List and Dev Agent Record with changes made</action>
+      <action>Add Change Log entry: "Addressed PR review feedback — {{comment_count}} comments (Date: {{date}})"</action>
+      <output>Pushed fixes for {{comment_count}} review comments. Ready for another look: {{pr_url}}</output>
+      <action>HALT and wait for {user_name} again (loop back to review feedback check)</action>
+    </check>
+
+    <check if="{user_name} approves the PR">
+      <!-- MERGE AND COMPLETE -->
+      <action>Merge the PR:
+        - PUT /repos/{owner}/{repo}/pulls/{pr_number}/merge
+        - merge_method: "squash" (or project default)
+      </action>
+      <action>Update story Status to: "done"</action>
+      <action>Update sprint-status.yaml: development_status[{{story_key}}] = "done"</action>
+      <action>Update last_updated field to current date</action>
+      <output>✅ Story {{story_key}} complete. PR merged and story marked done.
+
+        Ready to pick up the next story when you are.
+      </output>
+    </check>
+
     <check if="{sprint_status} file exists">
       <action>Suggest checking {sprint_status} to see project progress</action>
     </check>
-    <action>Remain flexible - allow user to choose their own path or ask for other assistance</action>
   </step>
 
 </workflow>
