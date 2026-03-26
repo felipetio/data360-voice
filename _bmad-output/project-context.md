@@ -66,6 +66,8 @@ All tools MUST return one of exactly two shapes:
 **Error:**
 ```python
 {"success": False, "error": str, "error_type": "api_error" | "timeout"}
+# Only "api_error" and "timeout" are used. Values like "no_data" or "validation_error"
+# appear in older planning artifacts but were never implemented — treat them as obsolete.
 ```
 
 - Never return empty `data` list without explicit "no data found" logging
@@ -85,7 +87,7 @@ All tools MUST return one of exactly two shapes:
   ```python
   instance._map_params = Data360Client._map_params
   ```
-- Tests in `test_data360_client.py` hit the real API — guard appropriately in CI
+- Tests in `test_data360_client.py` mock the httpx client — no real API calls are made
 
 ### Code Quality & Style Rules
 
