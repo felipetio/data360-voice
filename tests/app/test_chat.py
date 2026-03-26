@@ -49,7 +49,7 @@ class FakeStreamError:
         pass
 
 
-def _make_fake_cl_message(tokens_list: list[str]):
+def _make_fake_cl_message():
     """Build a mock cl.Message that accumulates tokens into .content."""
     msg = AsyncMock()
     accumulated = []
@@ -81,7 +81,7 @@ class TestStreamingResponse:
     async def test_normal_streaming_assembles_correct_content(self, reload_chat):
         """Happy-path: tokens are streamed and message content is assembled."""
         tokens = ["Hello", ", ", "world", "!"]
-        msg_mock = _make_fake_cl_message(tokens)
+        msg_mock = _make_fake_cl_message()
 
         with (
             patch("app.chat.cl.Message", return_value=msg_mock),
@@ -102,7 +102,7 @@ class TestStreamingResponse:
     async def test_assistant_reply_appended_to_history(self, reload_chat):
         """After a successful response, the assistant message is stored in history."""
         tokens = ["Hello"]
-        msg_mock = _make_fake_cl_message(tokens)
+        msg_mock = _make_fake_cl_message()
 
         captured_history = []
 
@@ -131,7 +131,7 @@ class TestStreamingResponse:
     async def test_history_trimmed_to_limit(self, reload_chat):
         """History is trimmed to conversation_history_limit before each API call."""
         tokens = ["ok"]
-        msg_mock = _make_fake_cl_message(tokens)
+        msg_mock = _make_fake_cl_message()
 
         # Pre-populate history with 20 messages (well above any limit)
         pre_history = [{"role": "user" if i % 2 == 0 else "assistant", "content": f"msg{i}"} for i in range(20)]
@@ -169,7 +169,7 @@ class TestStreamingResponse:
         from app.prompts import SYSTEM_PROMPT
 
         tokens = ["response"]
-        msg_mock = _make_fake_cl_message(tokens)
+        msg_mock = _make_fake_cl_message()
         captured_call_args = {}
 
         def fake_stream(**kwargs):
@@ -194,7 +194,7 @@ class TestStreamingResponse:
     async def test_conversation_history_passed_to_api(self, reload_chat):
         """Prior conversation turns are included in the messages list."""
         tokens = ["second response"]
-        msg_mock = _make_fake_cl_message(tokens)
+        msg_mock = _make_fake_cl_message()
         captured_messages = []
 
         def fake_stream(**kwargs):
@@ -233,8 +233,6 @@ class TestStreamingResponse:
 class TestErrorHandling:
     async def test_api_error_surfaces_as_ui_message(self, reload_chat):
         """Any exception during the API call must produce a visible error message."""
-        import anthropic as _anthropic
-
         error_msg_mock = AsyncMock()
         error_msg_mock.send = AsyncMock()
         streaming_msg_mock = AsyncMock()
@@ -251,7 +249,7 @@ class TestErrorHandling:
                 return streaming_msg_mock
             return error_msg_mock
 
-        exc = _anthropic.AuthenticationError.__new__(_anthropic.AuthenticationError)
+        exc = Exception("Simulated Anthropic authentication failure")
 
         with (
             patch("app.chat.cl.Message", side_effect=make_message),
@@ -351,7 +349,7 @@ class TestErrorHandling:
             await reload_chat.on_message(incoming)
 
         assert len(sent_messages) == 1
-        assert "⚠️" in sent_messages[0].content
+        assert sent_messages[0].content.startswith("⚠️")
 
 
 class TestConfig:
