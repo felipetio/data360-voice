@@ -4,8 +4,13 @@ version = "0.1.0"
 description = "Conversational AI tool for querying World Bank climate data with verified citations"
 requires-python = ">=3.12"
 dependencies = [
+    "anthropic>=0.55.0",
+    "asyncpg>=0.30.0",
+    "chainlit>=2.10.0",
+    "fastapi>=0.100.0",
     "fastmcp>=3.1.1",
     "httpx>=0.28.1",
+    "pydantic-settings>=2.0.0",
     "python-dotenv>=1.2.2",
 ]
 
