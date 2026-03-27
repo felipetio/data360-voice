@@ -1,5 +1,6 @@
 """Unit tests for streaming Claude API integration and MCP tool use in app/chat.py."""
 
+import contextlib
 import importlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -25,7 +26,14 @@ def _make_fake_content_block(block_type="text", text="Hello, world!", **kwargs):
         block.name = kwargs.get("name", "search_indicators")
         block.input = kwargs.get("input", {"query": "test"})
         block.id = kwargs.get("id", "toolu_01ABC")
-    block.model_dump = MagicMock(return_value={"type": block_type, **kwargs})
+    full_dump = {"type": block_type, "extra_null": None, **kwargs}
+
+    def fake_model_dump(exclude_none=False, **_kw):
+        if exclude_none:
+            return {k: v for k, v in full_dump.items() if v is not None}
+        return dict(full_dump)
+
+    block.model_dump = MagicMock(side_effect=fake_model_dump)
     return block
 
 
@@ -1091,3 +1099,218 @@ class TestConfig:
 
         s = Settings(_env_file=None)
         assert s.claude_max_tokens == 8192
+
+    def test_config_tool_result_max_chars_default(self, monkeypatch):
+        """Default tool_result_max_chars is 50000."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+        monkeypatch.delenv("TOOL_RESULT_MAX_CHARS", raising=False)
+
+        from app.config import Settings
+
+        s = Settings(_env_file=None)
+        assert s.tool_result_max_chars == 50000
+
+    def test_config_tool_result_max_chars_from_env(self, monkeypatch):
+        """TOOL_RESULT_MAX_CHARS env var overrides the default."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+        monkeypatch.setenv("TOOL_RESULT_MAX_CHARS", "10000")
+
+        from app.config import Settings
+
+        s = Settings(_env_file=None)
+        assert s.tool_result_max_chars == 10000
+
+
+class TestModelDumpExcludeNone:
+    """Verify model_dump(exclude_none=True) is used for assistant content blocks."""
+
+    async def test_assistant_content_blocks_exclude_none_fields(self, reload_chat):
+        """model_dump must be called with exclude_none=True to avoid sending null fields to API."""
+        tool_block = _make_fake_content_block(
+            "tool_use", name="search_indicators", input={"query": "CO2"}, id="toolu_001"
+        )
+        text_block = _make_fake_content_block("text", "Results.")
+
+        stream_tool = FakeStream(tokens=[], stop_reason="tool_use", content_blocks=[tool_block])
+        stream_final = FakeStream(tokens=["Results."], stop_reason="end_turn", content_blocks=[text_block])
+
+        call_count = 0
+        captured_histories = []
+
+        def fake_stream(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            import copy
+
+            captured_histories.append(copy.deepcopy(kwargs.get("messages", [])))
+            return stream_tool if call_count == 1 else stream_final
+
+        fake_mcp_result = MagicMock()
+        fake_mcp_result.isError = False
+        fake_text = MagicMock()
+        fake_text.text = "data"
+        fake_mcp_result.content = [fake_text]
+
+        fake_mcp_session = AsyncMock()
+        fake_mcp_session.call_tool = AsyncMock(return_value=fake_mcp_result)
+
+        tools = [{"name": "search_indicators", "description": "Search", "input_schema": {"type": "object"}}]
+        msg_mock = _make_fake_cl_message()
+        step_mock = AsyncMock()
+        step_mock.__aenter__ = AsyncMock(return_value=step_mock)
+        step_mock.__aexit__ = AsyncMock(return_value=False)
+        step_mock.input = ""
+        step_mock.output = ""
+
+        with (
+            patch("app.chat.cl.Message", return_value=msg_mock),
+            patch(
+                "app.chat.cl.user_session",
+                _make_session_mock_with_history(mcp_session=fake_mcp_session, mcp_tools=tools),
+            ),
+            patch("app.chat.client.messages.stream", side_effect=fake_stream),
+            patch("app.chat.cl.Step", return_value=step_mock),
+        ):
+            incoming = MagicMock()
+            incoming.content = "Search CO2"
+            await reload_chat.on_message(incoming)
+
+        # The assistant content blocks in the second call must have no None values
+        assistant_msg = captured_histories[1][1]
+        assert assistant_msg["role"] == "assistant"
+        for block in assistant_msg["content"]:
+            for value in block.values():
+                assert value is not None, f"Found None value in block: {block}"
+
+
+class TestToolResultTruncation:
+    """Verify large tool results are truncated before feeding back to Claude."""
+
+    async def test_large_tool_result_is_truncated(self, reload_chat):
+        """Tool results exceeding max chars should be truncated with a marker."""
+        from app.chat import _extract_tool_result_text
+
+        large_text = "x" * 60000
+        result = MagicMock()
+        result.isError = False
+        block = MagicMock()
+        block.text = large_text
+        result.content = [block]
+
+        text = _extract_tool_result_text(result)
+        assert len(text) < 60000
+        assert "[truncated]" in text.lower() or "truncated" in text.lower()
+
+    async def test_small_tool_result_not_truncated(self, reload_chat):
+        """Tool results within limit should not be truncated."""
+        from app.chat import _extract_tool_result_text
+
+        small_text = '{"data": [1, 2, 3]}'
+        result = MagicMock()
+        result.isError = False
+        block = MagicMock()
+        block.text = small_text
+        result.content = [block]
+
+        text = _extract_tool_result_text(result)
+        assert text == small_text
+
+
+def _make_fake_mcp_tool():
+    """Build a fake MCP tool for auto-connect tests."""
+    from mcp.types import Tool
+
+    tool = MagicMock(spec=Tool)
+    tool.name = "search_indicators"
+    tool.description = "Search"
+    tool.inputSchema = {"type": "object", "properties": {}}
+    return tool
+
+
+@contextlib.asynccontextmanager
+async def _fake_streamablehttp_client(url, **kwargs):
+    """Fake streamablehttp_client that yields mock read/write streams."""
+    yield (MagicMock(), MagicMock(), lambda: None)
+
+
+class TestMcpAutoConnect:
+    """Tests for MCP auto-connection on chat start."""
+
+    async def test_on_chat_start_auto_connects_mcp(self, reload_chat):
+        """on_chat_start should auto-connect to MCP and store session/tools."""
+        fake_tool = _make_fake_mcp_tool()
+        fake_session = AsyncMock()
+        list_result = MagicMock()
+        list_result.tools = [fake_tool]
+        fake_session.list_tools = AsyncMock(return_value=list_result)
+        fake_session.initialize = AsyncMock()
+
+        stored = {}
+        msg_mock = AsyncMock()
+        msg_mock.send = AsyncMock()
+
+        with (
+            patch("app.chat.streamablehttp_client", _fake_streamablehttp_client),
+            patch("app.chat.ClientSession", return_value=fake_session),
+            patch("app.chat.cl.user_session") as session_mock,
+            patch("app.chat.cl.Message", return_value=msg_mock),
+        ):
+            session_mock.set.side_effect = lambda k, v: stored.update({k: v})
+            # Make ClientSession work as async context manager
+            fake_session.__aenter__ = AsyncMock(return_value=fake_session)
+            fake_session.__aexit__ = AsyncMock(return_value=False)
+
+            await reload_chat.on_chat_start()
+
+        assert stored.get("mcp_session") is fake_session
+        assert len(stored.get("mcp_tools", [])) == 1
+        assert stored["mcp_tools"][0]["name"] == "search_indicators"
+        fake_session.initialize.assert_awaited_once()
+
+    async def test_on_chat_start_auto_connect_failure_graceful(self, reload_chat):
+        """If MCP auto-connect fails, chat start still completes without tools."""
+        stored = {}
+        msg_mock = AsyncMock()
+        msg_mock.send = AsyncMock()
+
+        @contextlib.asynccontextmanager
+        async def failing_client(url, **kwargs):
+            raise ConnectionError("MCP server not running")
+            yield  # pragma: no cover
+
+        with (
+            patch("app.chat.streamablehttp_client", failing_client),
+            patch("app.chat.cl.user_session") as session_mock,
+            patch("app.chat.cl.Message", return_value=msg_mock),
+        ):
+            session_mock.set.side_effect = lambda k, v: stored.update({k: v})
+
+            # Should not raise
+            await reload_chat.on_chat_start()
+
+        # Session should be None, tools should be empty
+        assert stored.get("mcp_session") is None
+        assert stored.get("mcp_tools") == []
+        # Welcome message should still be sent
+        msg_mock.send.assert_awaited_once()
+
+    async def test_on_chat_end_closes_exit_stack(self, reload_chat):
+        """on_chat_end should close the AsyncExitStack to clean up MCP connection."""
+        mock_stack = AsyncMock()
+
+        with patch("app.chat.cl.user_session") as session_mock:
+            session_mock.get.return_value = mock_stack
+
+            await reload_chat.on_chat_end()
+
+        mock_stack.aclose.assert_awaited_once()
+
+    async def test_on_chat_end_handles_no_stack(self, reload_chat):
+        """on_chat_end should handle gracefully when no exit stack exists."""
+        with patch("app.chat.cl.user_session") as session_mock:
+            session_mock.get.return_value = None
+
+            # Should not raise
+            await reload_chat.on_chat_end()

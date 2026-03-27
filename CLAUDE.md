@@ -12,6 +12,9 @@ This project was developed using the BMAD methodology.
 ## Commands
 
 ```bash
+# Start PostgreSQL (required for Chainlit conversation persistence)
+docker compose up -d
+
 # Run all tests
 uv run python -m pytest
 

@@ -1,10 +1,12 @@
 import json
 import logging
+from contextlib import AsyncExitStack
 from typing import Any
 
 import anthropic
 import chainlit as cl
 from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
 
 from app.config import settings
 from app.prompts import SYSTEM_PROMPT
@@ -14,6 +16,7 @@ logger = logging.getLogger(__name__)
 # MCP session key used in cl.user_session
 _MCP_SESSION_KEY = "mcp_session"
 _MCP_TOOLS_KEY = "mcp_tools"
+_MCP_EXIT_STACK_KEY = "mcp_exit_stack"
 
 
 def _make_client():
@@ -82,7 +85,12 @@ def _extract_tool_result_text(call_result) -> str:
     for block in call_result.content:
         if hasattr(block, "text"):
             parts.append(block.text)
-    return "\n".join(parts) if parts else ""
+    text = "\n".join(parts) if parts else ""
+
+    max_chars = settings.tool_result_max_chars
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n\n[... truncated, results too large ...]"
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +103,36 @@ async def on_chat_start():
     cl.user_session.set("history", [])
     cl.user_session.set(_MCP_SESSION_KEY, None)
     cl.user_session.set(_MCP_TOOLS_KEY, [])
+    cl.user_session.set(_MCP_EXIT_STACK_KEY, None)
+
+    # Auto-connect to MCP server
+    stack = AsyncExitStack()
+    try:
+        read, write, _ = await stack.enter_async_context(streamablehttp_client(url=settings.mcp_server_url))
+        session = await stack.enter_async_context(ClientSession(read, write))
+        await session.initialize()
+        result = await session.list_tools()
+        tools = _mcp_tools_to_anthropic(result.tools)
+
+        cl.user_session.set(_MCP_SESSION_KEY, session)
+        cl.user_session.set(_MCP_TOOLS_KEY, tools)
+        cl.user_session.set(_MCP_EXIT_STACK_KEY, stack)
+        logger.info("MCP auto-connected: %d tools available", len(tools))
+    except Exception:
+        logger.warning("MCP auto-connect failed, continuing without tools", exc_info=True)
+        await stack.aclose()
+
     await cl.Message(content="Welcome to Data360 Voice! Ask me about World Bank climate and development data.").send()
+
+
+@cl.on_chat_end
+async def on_chat_end():
+    stack: AsyncExitStack | None = cl.user_session.get(_MCP_EXIT_STACK_KEY)
+    if stack:
+        try:
+            await stack.aclose()
+        except Exception:
+            logger.warning("Error closing MCP connection", exc_info=True)
 
 
 @cl.on_message
@@ -186,7 +223,7 @@ async def _agentic_loop(
         # --- Handle tool_use blocks ---
         # Append assistant response (may contain both text and tool_use blocks)
         assistant_content = final_message.content  # list of content blocks
-        history.append({"role": "assistant", "content": [b.model_dump() for b in assistant_content]})
+        history.append({"role": "assistant", "content": [b.model_dump(exclude_none=True) for b in assistant_content]})
 
         # Process each tool_use block
         tool_results = []
