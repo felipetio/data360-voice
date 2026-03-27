@@ -58,6 +58,4 @@ async def on_message(message: cl.Message):
     except Exception as e:
         logger.exception("Error calling Claude API: %s", e)
         await msg.remove()
-        await cl.Message(
-            content="⚠️ Sorry, I couldn't reach the AI service. Please try again."
-        ).send()
+        await cl.Message(content="⚠️ Sorry, I couldn't reach the AI service. Please try again.").send()
