@@ -420,6 +420,29 @@ class TestMcpToolUse:
 
         assert captured_call_kwargs.get("tools") == tools
 
+    async def test_configurable_model_used_in_api_call(self, reload_chat):
+        """The model from settings.claude_model is used in the Claude API call."""
+        msg_mock = _make_fake_cl_message()
+        captured_call_kwargs = {}
+
+        def fake_stream(**kwargs):
+            captured_call_kwargs.update(kwargs)
+            return FakeStream(["OK"])
+
+        with (
+            patch("app.chat.cl.Message", return_value=msg_mock),
+            patch("app.chat.cl.user_session", _make_session_mock_with_history()),
+            patch("app.chat.client.messages.stream", side_effect=fake_stream),
+            patch("app.chat.settings") as settings_mock,
+        ):
+            settings_mock.claude_model = "claude-sonnet-4-5-20250514"
+            settings_mock.conversation_history_limit = 10
+            incoming = MagicMock()
+            incoming.content = "test"
+            await reload_chat.on_message(incoming)
+
+        assert captured_call_kwargs["model"] == "claude-sonnet-4-5-20250514"
+
     async def test_no_tools_passed_when_mcp_not_connected(self, reload_chat):
         """When no MCP tools available, Claude is called without 'tools' parameter."""
         msg_mock = _make_fake_cl_message()
@@ -778,3 +801,25 @@ class TestConfig:
 
         settings = Settings(_env_file=None)
         assert settings.conversation_history_limit == 10
+
+    def test_config_claude_model_default(self, monkeypatch):
+        """Default claude_model is 'claude-haiku-4-5'."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+        monkeypatch.delenv("CLAUDE_MODEL", raising=False)
+
+        from app.config import Settings
+
+        s = Settings(_env_file=None)
+        assert s.claude_model == "claude-haiku-4-5"
+
+    def test_config_claude_model_from_env(self, monkeypatch):
+        """CLAUDE_MODEL env var overrides the default."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+        monkeypatch.setenv("CLAUDE_MODEL", "claude-sonnet-4-5-20250514")
+
+        from app.config import Settings
+
+        s = Settings(_env_file=None)
+        assert s.claude_model == "claude-sonnet-4-5-20250514"

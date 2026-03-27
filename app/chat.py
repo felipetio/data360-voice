@@ -152,7 +152,7 @@ async def _agentic_loop(
     Returns the final assembled text.
     """
     call_kwargs: dict[str, Any] = {
-        "model": "claude-haiku-4-5",
+        "model": settings.claude_model,
         "max_tokens": 4096,
         "system": SYSTEM_PROMPT,
     }
