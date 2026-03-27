@@ -244,6 +244,6 @@ if __name__ == "__main__":
     if MCP_TRANSPORT not in {"stdio", "streamable-http"}:
         raise ValueError(f"Invalid MCP_TRANSPORT '{MCP_TRANSPORT}'. Valid values: stdio, streamable-http")
     if MCP_TRANSPORT == "streamable-http":
-        mcp.run(transport=MCP_TRANSPORT, port=MCP_PORT)
+        mcp.run(transport=MCP_TRANSPORT, port=MCP_PORT or 8001)
     else:
         mcp.run(transport=MCP_TRANSPORT)

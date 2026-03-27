@@ -24,7 +24,7 @@ uv run fastmcp dev mcp_server/server.py
 # Run server in stdio mode (default)
 uv run python -m mcp_server.server
 
-# Run server in HTTP Streamable mode (port 8000)
+# Run server in HTTP Streamable mode (port 8001)
 MCP_TRANSPORT=streamable-http uv run python -m mcp_server.server
 
 # Install to Claude Desktop
@@ -100,6 +100,7 @@ All optional with sensible defaults — no API keys required (World Bank Data360
 | `DATA360_MAX_RETRIES` | `3` | Retry attempts on transient errors |
 | `DATA360_RETRY_BACKOFF_BASE` | `1.0` | Exponential backoff base (seconds) |
 | `MCP_TRANSPORT` | `stdio` | Transport mode (`stdio` or `streamable-http`) |
+| `MCP_PORT` | `8001` | HTTP port (only used with `streamable-http`) |
 
 
 ## BMAD Artifacts
