@@ -102,7 +102,7 @@ Opens a browser UI where you can call each tool directly and inspect responses.
 MCP_TRANSPORT=streamable-http uv run python -m mcp_server.server
 ```
 
-Starts an HTTP server at `http://127.0.0.1:8000/mcp`. Any MCP-compatible client can connect to this endpoint.
+Starts an HTTP server at `http://127.0.0.1:8001/mcp`. Any MCP-compatible client can connect to this endpoint.
 
 
 ## Configuration
@@ -116,6 +116,7 @@ All settings are optional — defaults work out of the box.
 | `DATA360_MAX_RETRIES` | `3` | Retry attempts on 429/5xx errors |
 | `DATA360_RETRY_BACKOFF_BASE` | `1.0` | Exponential backoff base (seconds) |
 | `MCP_TRANSPORT` | `stdio` | Transport mode (`stdio` or `streamable-http`) |
+| `MCP_PORT` | `8001` | HTTP port (only used with `streamable-http`) |
 
 You can set these in a `.env` file in the project root.
 
