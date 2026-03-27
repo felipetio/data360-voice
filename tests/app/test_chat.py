@@ -436,12 +436,37 @@ class TestMcpToolUse:
             patch("app.chat.settings") as settings_mock,
         ):
             settings_mock.claude_model = "claude-sonnet-4-5-20250514"
+            settings_mock.claude_max_tokens = 4096
             settings_mock.conversation_history_limit = 10
             incoming = MagicMock()
             incoming.content = "test"
             await reload_chat.on_message(incoming)
 
         assert captured_call_kwargs["model"] == "claude-sonnet-4-5-20250514"
+
+    async def test_configurable_max_tokens_used_in_api_call(self, reload_chat):
+        """The max_tokens from settings.claude_max_tokens is used in the Claude API call."""
+        msg_mock = _make_fake_cl_message()
+        captured_call_kwargs = {}
+
+        def fake_stream(**kwargs):
+            captured_call_kwargs.update(kwargs)
+            return FakeStream(["OK"])
+
+        with (
+            patch("app.chat.cl.Message", return_value=msg_mock),
+            patch("app.chat.cl.user_session", _make_session_mock_with_history()),
+            patch("app.chat.client.messages.stream", side_effect=fake_stream),
+            patch("app.chat.settings") as settings_mock,
+        ):
+            settings_mock.claude_model = "claude-haiku-4-5"
+            settings_mock.claude_max_tokens = 8192
+            settings_mock.conversation_history_limit = 10
+            incoming = MagicMock()
+            incoming.content = "test"
+            await reload_chat.on_message(incoming)
+
+        assert captured_call_kwargs["max_tokens"] == 8192
 
     async def test_no_tools_passed_when_mcp_not_connected(self, reload_chat):
         """When no MCP tools available, Claude is called without 'tools' parameter."""
@@ -823,3 +848,25 @@ class TestConfig:
 
         s = Settings(_env_file=None)
         assert s.claude_model == "claude-sonnet-4-5-20250514"
+
+    def test_config_claude_max_tokens_default(self, monkeypatch):
+        """Default claude_max_tokens is 4096."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+        monkeypatch.delenv("CLAUDE_MAX_TOKENS", raising=False)
+
+        from app.config import Settings
+
+        s = Settings(_env_file=None)
+        assert s.claude_max_tokens == 4096
+
+    def test_config_claude_max_tokens_from_env(self, monkeypatch):
+        """CLAUDE_MAX_TOKENS env var overrides the default."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+        monkeypatch.setenv("CLAUDE_MAX_TOKENS", "8192")
+
+        from app.config import Settings
+
+        s = Settings(_env_file=None)
+        assert s.claude_max_tokens == 8192

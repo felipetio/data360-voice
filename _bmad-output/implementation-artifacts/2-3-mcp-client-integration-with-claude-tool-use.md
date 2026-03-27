@@ -41,10 +41,10 @@ All 3 ACs were implemented in Story 2.2 Phase 2 (commit `bb183e6`, PR #13, branc
   - [x] Replace hardcoded `"claude-haiku-4-5"` in `_agentic_loop()` with `settings.claude_model`
   - [x] Update existing tests if they assert on model name
 
-- [ ] Task 3: Make max_tokens configurable (improvement)
-  - [ ] Add `claude_max_tokens: int = Field(default=4096, ge=1)` to `app/config.py` Settings
-  - [ ] Add `CLAUDE_MAX_TOKENS` to `.env.example`
-  - [ ] Replace hardcoded `4096` in `_agentic_loop()` with `settings.claude_max_tokens`
+- [x] Task 3: Make max_tokens configurable (improvement)
+  - [x] Add `claude_max_tokens: int = Field(default=4096, ge=1)` to `app/config.py` Settings
+  - [x] Add `CLAUDE_MAX_TOKENS` to `.env.example`
+  - [x] Replace hardcoded `4096` in `_agentic_loop()` with `settings.claude_max_tokens`
 
 - [ ] Task 4: Add integration-level verification tests (AC: #1, #2)
   - [ ] Test that a full agentic loop with multiple tool calls produces correct history structure

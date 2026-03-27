@@ -153,7 +153,7 @@ async def _agentic_loop(
     """
     call_kwargs: dict[str, Any] = {
         "model": settings.claude_model,
-        "max_tokens": 4096,
+        "max_tokens": settings.claude_max_tokens,
         "system": SYSTEM_PROMPT,
     }
     if tools:
