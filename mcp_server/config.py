@@ -35,3 +35,8 @@ RETRY_BACKOFF_BASE = _float_env("DATA360_RETRY_BACKOFF_BASE", 1.0, min_val=0.0)
 # Pagination settings (fixed caps, not user-configurable)
 PAGE_SIZE = 1000
 MAX_RECORDS = 5000
+
+# Transport settings
+MCP_TRANSPORT = os.getenv("MCP_TRANSPORT", "stdio")
+_mcp_port_raw = os.getenv("MCP_PORT")
+MCP_PORT = int(_mcp_port_raw) if _mcp_port_raw is not None else None
