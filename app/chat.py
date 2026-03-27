@@ -1,5 +1,4 @@
 import logging
-import uuid
 
 import chainlit as cl
 
@@ -57,9 +56,8 @@ async def on_message(message: cl.Message):
         cl.user_session.set("history", history)
 
     except Exception as e:
-        error_id = uuid.uuid4().hex[:8]
-        logger.exception("Error calling Claude API [%s]: %s", error_id, e)
+        logger.exception("Error calling Claude API: %s", e)
         await msg.remove()
         await cl.Message(
-            content=f"⚠️ Sorry, I couldn't reach the AI service. Please try again. (ref: {error_id})"
+            content="⚠️ Sorry, I couldn't reach the AI service. Please try again."
         ).send()
