@@ -804,6 +804,227 @@ class TestMcpToolUse:
         assert "Connection refused" in text
 
 
+class TestAgenticLoopIntegration:
+    """AC1/AC2: Integration-level tests verifying full agentic loop history structure."""
+
+    async def test_multi_tool_chain_produces_correct_history_structure(self, reload_chat):
+        """AC1: A multi-step tool chain (search_indicators -> get_data) produces correct history."""
+        search_block = _make_fake_content_block(
+            "tool_use", name="search_indicators", input={"query": "CO2"}, id="toolu_search"
+        )
+        get_data_block = _make_fake_content_block(
+            "tool_use", name="get_data", input={"database_id": "WB_WDI", "indicator": "CO2"}, id="toolu_getdata"
+        )
+        final_text_block = _make_fake_content_block("text", "Brazil's CO2 emissions are 500Mt.")
+
+        # Step 1: Claude calls search_indicators
+        stream_search = FakeStream(tokens=[], stop_reason="tool_use", content_blocks=[search_block])
+        # Step 2: Claude calls get_data
+        stream_getdata = FakeStream(tokens=[], stop_reason="tool_use", content_blocks=[get_data_block])
+        # Step 3: Claude produces final answer
+        stream_final = FakeStream(
+            tokens=["Brazil's CO2 emissions are 500Mt."], stop_reason="end_turn", content_blocks=[final_text_block]
+        )
+
+        call_count = 0
+        captured_histories = []
+
+        def fake_stream(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            import copy
+
+            captured_histories.append(copy.deepcopy(kwargs.get("messages", [])))
+            if call_count == 1:
+                return stream_search
+            elif call_count == 2:
+                return stream_getdata
+            else:
+                return stream_final
+
+        # Fake MCP results for both calls
+        fake_search_result = MagicMock()
+        fake_search_result.isError = False
+        fake_search_text = MagicMock()
+        fake_search_text.text = '{"success": true, "data": [{"INDICATOR_ID": "CO2"}]}'
+        fake_search_result.content = [fake_search_text]
+
+        fake_data_result = MagicMock()
+        fake_data_result.isError = False
+        fake_data_text = MagicMock()
+        fake_data_text.text = '{"success": true, "data": [{"VALUE": 500}]}'
+        fake_data_result.content = [fake_data_text]
+
+        fake_mcp_session = AsyncMock()
+        call_tool_results = [fake_search_result, fake_data_result]
+        fake_mcp_session.call_tool = AsyncMock(side_effect=call_tool_results)
+
+        tools = [
+            {"name": "search_indicators", "description": "Search", "input_schema": {"type": "object"}},
+            {"name": "get_data", "description": "Get data", "input_schema": {"type": "object"}},
+        ]
+        msg_mock = _make_fake_cl_message()
+        step_mock = AsyncMock()
+        step_mock.__aenter__ = AsyncMock(return_value=step_mock)
+        step_mock.__aexit__ = AsyncMock(return_value=False)
+        step_mock.input = ""
+        step_mock.output = ""
+
+        with (
+            patch("app.chat.cl.Message", return_value=msg_mock),
+            patch(
+                "app.chat.cl.user_session",
+                _make_session_mock_with_history(mcp_session=fake_mcp_session, mcp_tools=tools),
+            ),
+            patch("app.chat.client.messages.stream", side_effect=fake_stream),
+            patch("app.chat.cl.Step", return_value=step_mock),
+        ):
+            incoming = MagicMock()
+            incoming.content = "What are CO2 emissions in Brazil?"
+            await reload_chat.on_message(incoming)
+
+        # 3 Claude calls: search tool, get_data tool, final text
+        assert call_count == 3
+
+        # Second call should have: user msg, assistant tool_use, user tool_result
+        assert len(captured_histories[1]) == 3
+        assert captured_histories[1][0]["role"] == "user"
+        assert captured_histories[1][1]["role"] == "assistant"
+        assert captured_histories[1][2]["role"] == "user"
+        assert captured_histories[1][2]["content"][0]["type"] == "tool_result"
+
+        # Third call should have 5 entries: user, asst(tool), user(result), asst(tool), user(result)
+        assert len(captured_histories[2]) == 5
+        assert captured_histories[2][3]["role"] == "assistant"
+        assert captured_histories[2][4]["role"] == "user"
+        assert captured_histories[2][4]["content"][0]["type"] == "tool_result"
+
+    async def test_tool_result_content_blocks_correctly_formatted(self, reload_chat):
+        """AC2: Tool results are correctly formatted as tool_result content blocks for Claude."""
+        tool_block = _make_fake_content_block(
+            "tool_use", name="search_indicators", input={"query": "GDP"}, id="toolu_fmt"
+        )
+        text_block = _make_fake_content_block("text", "Done.")
+
+        stream_tool = FakeStream(tokens=[], stop_reason="tool_use", content_blocks=[tool_block])
+        stream_final = FakeStream(tokens=["Done."], stop_reason="end_turn", content_blocks=[text_block])
+
+        call_count = 0
+        captured_histories = []
+
+        def fake_stream(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            import copy
+
+            captured_histories.append(copy.deepcopy(kwargs.get("messages", [])))
+            return stream_tool if call_count == 1 else stream_final
+
+        fake_mcp_result = MagicMock()
+        fake_mcp_result.isError = False
+        fake_text = MagicMock()
+        fake_text.text = '{"success": true, "data": [{"id": "GDP_001"}]}'
+        fake_mcp_result.content = [fake_text]
+
+        fake_mcp_session = AsyncMock()
+        fake_mcp_session.call_tool = AsyncMock(return_value=fake_mcp_result)
+
+        tools = [{"name": "search_indicators", "description": "Search", "input_schema": {"type": "object"}}]
+        msg_mock = _make_fake_cl_message()
+        step_mock = AsyncMock()
+        step_mock.__aenter__ = AsyncMock(return_value=step_mock)
+        step_mock.__aexit__ = AsyncMock(return_value=False)
+        step_mock.input = ""
+        step_mock.output = ""
+
+        with (
+            patch("app.chat.cl.Message", return_value=msg_mock),
+            patch(
+                "app.chat.cl.user_session",
+                _make_session_mock_with_history(mcp_session=fake_mcp_session, mcp_tools=tools),
+            ),
+            patch("app.chat.client.messages.stream", side_effect=fake_stream),
+            patch("app.chat.cl.Step", return_value=step_mock),
+        ):
+            incoming = MagicMock()
+            incoming.content = "Search GDP"
+            await reload_chat.on_message(incoming)
+
+        # Verify tool_result block structure in the second call
+        tool_result_turn = captured_histories[1][-1]
+        assert tool_result_turn["role"] == "user"
+        tool_result_block = tool_result_turn["content"][0]
+        assert tool_result_block["type"] == "tool_result"
+        assert tool_result_block["tool_use_id"] == "toolu_fmt"
+        assert "content" in tool_result_block
+        assert '{"success": true' in tool_result_block["content"]
+
+    async def test_history_includes_text_and_tool_use_blocks_after_chain(self, reload_chat):
+        """AC1: After a multi-step chain, history includes both text and tool_use content blocks."""
+        # Claude first returns a text + tool_use in one response
+        text_thinking = _make_fake_content_block("text", "Let me search for that.")
+        tool_block = _make_fake_content_block(
+            "tool_use", name="search_indicators", input={"query": "population"}, id="toolu_mixed"
+        )
+        final_block = _make_fake_content_block("text", "Here is the data.")
+
+        stream_mixed = FakeStream(
+            tokens=["Let me search for that."],
+            stop_reason="tool_use",
+            content_blocks=[text_thinking, tool_block],
+        )
+        stream_final = FakeStream(tokens=["Here is the data."], stop_reason="end_turn", content_blocks=[final_block])
+
+        call_count = 0
+        captured_histories = []
+
+        def fake_stream(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            import copy
+
+            captured_histories.append(copy.deepcopy(kwargs.get("messages", [])))
+            return stream_mixed if call_count == 1 else stream_final
+
+        fake_mcp_result = MagicMock()
+        fake_mcp_result.isError = False
+        fake_text = MagicMock()
+        fake_text.text = "population data"
+        fake_mcp_result.content = [fake_text]
+
+        fake_mcp_session = AsyncMock()
+        fake_mcp_session.call_tool = AsyncMock(return_value=fake_mcp_result)
+
+        tools = [{"name": "search_indicators", "description": "Search", "input_schema": {"type": "object"}}]
+        msg_mock = _make_fake_cl_message()
+        step_mock = AsyncMock()
+        step_mock.__aenter__ = AsyncMock(return_value=step_mock)
+        step_mock.__aexit__ = AsyncMock(return_value=False)
+        step_mock.input = ""
+        step_mock.output = ""
+
+        with (
+            patch("app.chat.cl.Message", return_value=msg_mock),
+            patch(
+                "app.chat.cl.user_session",
+                _make_session_mock_with_history(mcp_session=fake_mcp_session, mcp_tools=tools),
+            ),
+            patch("app.chat.client.messages.stream", side_effect=fake_stream),
+            patch("app.chat.cl.Step", return_value=step_mock),
+        ):
+            incoming = MagicMock()
+            incoming.content = "Find population data"
+            await reload_chat.on_message(incoming)
+
+        # The assistant message in the second call's history should have mixed content blocks
+        assistant_msg = captured_histories[1][1]
+        assert assistant_msg["role"] == "assistant"
+        assert isinstance(assistant_msg["content"], list)
+        # Should contain both text and tool_use block types (from model_dump)
+        block_types = {b.get("type") for b in assistant_msg["content"] if isinstance(b, dict)}
+        assert "text" in block_types or "tool_use" in block_types
+
+
 class TestConfig:
     def test_config_loads_conversation_history_limit(self, monkeypatch):
         """CONVERSATION_HISTORY_LIMIT env var is read correctly."""

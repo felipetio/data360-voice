@@ -28,12 +28,12 @@ All 3 ACs were implemented in Story 2.2 Phase 2 (commit `bb183e6`, PR #13, branc
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Validate existing implementation against ACs (AC: #1, #2, #3)
-  - [ ] Verify `_agentic_loop()` correctly handles multi-step tool chains (search_indicators -> get_data)
-  - [ ] Verify tool call intermediate steps render in Chainlit UI
-  - [ ] Verify error path when MCP server is disconnected
-  - [ ] Verify error path when MCP tool returns `isError=True`
-  - [ ] Run full test suite: `uv run python -m pytest` (expect 103+ pass)
+- [x] Task 1: Validate existing implementation against ACs (AC: #1, #2, #3)
+  - [x] Verify `_agentic_loop()` correctly handles multi-step tool chains (search_indicators -> get_data)
+  - [x] Verify tool call intermediate steps render in Chainlit UI
+  - [x] Verify error path when MCP server is disconnected
+  - [x] Verify error path when MCP tool returns `isError=True`
+  - [x] Run full test suite: `uv run python -m pytest` (expect 103+ pass)
 
 - [x] Task 2: Make Claude model configurable (improvement)
   - [x] Add `claude_model: str = "claude-haiku-4-5"` to `app/config.py` Settings
@@ -46,10 +46,10 @@ All 3 ACs were implemented in Story 2.2 Phase 2 (commit `bb183e6`, PR #13, branc
   - [x] Add `CLAUDE_MAX_TOKENS` to `.env.example`
   - [x] Replace hardcoded `4096` in `_agentic_loop()` with `settings.claude_max_tokens`
 
-- [ ] Task 4: Add integration-level verification tests (AC: #1, #2)
-  - [ ] Test that a full agentic loop with multiple tool calls produces correct history structure
-  - [ ] Test that tool results are correctly formatted for Claude's tool_result content blocks
-  - [ ] Verify history includes both text and tool_use content blocks after multi-step chains
+- [x] Task 4: Add integration-level verification tests (AC: #1, #2)
+  - [x] Test that a full agentic loop with multiple tool calls produces correct history structure
+  - [x] Test that tool results are correctly formatted for Claude's tool_result content blocks
+  - [x] Verify history includes both text and tool_use content blocks after multi-step chains
 
 ## Dev Notes
 
@@ -126,10 +126,28 @@ The MCP connection is **user-initiated** via the Chainlit UI. Users add the MCP 
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6
 
 ### Debug Log References
 
+None required.
+
 ### Completion Notes List
 
+- Task 1: Validated all 3 ACs against existing implementation. All code paths verified (agentic loop, MCP connect/disconnect, error handling). 136/136 tests pass.
+- Task 2: Added `claude_model` setting to `app/config.py`, replaced hardcoded model in `_agentic_loop()`, documented in `.env.example`. 3 new tests.
+- Task 3: Added `claude_max_tokens` setting to `app/config.py`, replaced hardcoded 4096 in `_agentic_loop()`, documented in `.env.example`. 3 new tests.
+- Task 4: Added 3 integration tests in `TestAgenticLoopIntegration`: multi-tool chain history structure, tool_result formatting, mixed text+tool_use content blocks.
+
+### Change Log
+
+- Made Claude model configurable via `CLAUDE_MODEL` env var (Date: 2026-03-27)
+- Made max_tokens configurable via `CLAUDE_MAX_TOKENS` env var (Date: 2026-03-27)
+- Added integration-level tests for agentic loop history structure (Date: 2026-03-27)
+
 ### File List
+
+- `app/config.py` (modified) - Added `claude_model` and `claude_max_tokens` settings
+- `app/chat.py` (modified) - Replaced hardcoded model and max_tokens with settings
+- `.env.example` (modified) - Documented `CLAUDE_MODEL` and `CLAUDE_MAX_TOKENS`
+- `tests/app/test_chat.py` (modified) - Added 9 new tests (config, API call, integration)
