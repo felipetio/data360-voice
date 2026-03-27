@@ -107,22 +107,35 @@ anthropic/claude-sonnet-4-6 (via OpenClaw subagent)
 
 ### Completion Notes List
 
-- All tasks implemented and merged via PR #12.
+**Phase 1 — Claude API Streaming (PR #12, merged 2026-03-27):**
+- All streaming tasks implemented and merged via PR #12.
 - Copilot review (7 comments) addressed in two follow-up commits on the PR branch before merge.
 - Key fixes post-review: removed UUID correlation ID from error handler (cleaner UX); added `Field(ge=1)` to `conversation_history_limit`; fixed unstable `AuthenticationError.__new__()` in tests; tightened assertion to `startswith("⚠️")`.
 - 92/92 tests pass. Ruff lint and format clean.
 
+**Phase 2 — MCP Client Integration (PR #13, 2026-03-27):**
+- Extended `app/chat.py` with `@cl.on_mcp_connect` / `@cl.on_mcp_disconnect` handlers using Chainlit's native MCP client support.
+- Implemented agentic tool-use loop: Claude receives MCP tools → returns `tool_use` blocks → tools executed via `ClientSession.call_tool()` → results fed back → loop until `stop_reason != "tool_use"`.
+- Enabled `[features.mcp] enabled = true` in `.chainlit/config.toml`.
+- Tool calls shown as intermediate steps via `cl.Step` in the Chainlit UI.
+- If MCP server is unavailable (session=None), error message is passed to Claude as a tool result so Claude can narrate the failure gracefully (NFR9).
+- MCP tool errors (isError=True) are also surfaced as error strings to Claude rather than raising exceptions.
+- Streaming preserved: final text response is streamed token-by-token; tool call steps are non-streaming.
+- 11 new unit tests cover the MCP integration path; 103/103 total tests pass.
+- Ruff lint and format clean.
+
 ### File List
 
-- `app/chat.py` — streaming Claude integration, history management, error handling
-- `app/prompts.py` — new, `SYSTEM_PROMPT` grounding constant
-- `app/config.py` — added `conversation_history_limit` setting with `Field(ge=1)`
-- `.env.example` — documented `CONVERSATION_HISTORY_LIMIT`
-- `tests/app/test_chat.py` — new, comprehensive unit tests for chat handler
+- `app/chat.py` — full MCP agentic loop + streaming; `@cl.on_mcp_connect`/`@cl.on_mcp_disconnect` handlers; helper functions `_mcp_tools_to_anthropic` and `_extract_tool_result_text`
+- `app/prompts.py` — `SYSTEM_PROMPT` grounding constant (unchanged)
+- `app/config.py` — `mcp_server_url` setting already present (no changes needed)
+- `.chainlit/config.toml` — `[features.mcp] enabled = true`
+- `tests/app/test_chat.py` — 11 new `TestMcpToolUse` tests; existing 8 tests updated with `FakeStream.get_final_message()` support
 
 ### Change Log
 
-- 2026-03-26: Implemented all tasks, opened PR #12 against main.
+- 2026-03-26: Phase 1 — streaming implementation, opened PR #12 against main.
 - 2026-03-26: Copilot review — 7 comments. All addressed in commit `8a07c61`.
-- 2026-03-27: Follow-up fix — removed UUID from error handler, show clean generic message. Commit `626bf00`.
-- 2026-03-27: PR approved by @felipetio and merged to main.
+- 2026-03-27: Follow-up fix — removed UUID from error handler. Commit `626bf00`.
+- 2026-03-27: PR #12 approved by @felipetio and merged to main.
+- 2026-03-27: Phase 2 — MCP client integration, opened PR #13 against main (branch: story/2.2-mcp-client-integration).

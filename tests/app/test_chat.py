@@ -1,5 +1,6 @@
-"""Unit tests for streaming Claude API integration in app/chat.py."""
+"""Unit tests for streaming Claude API integration and MCP tool use in app/chat.py."""
 
+import contextlib
 import importlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -15,11 +16,50 @@ def set_required_env_vars(monkeypatch):
     monkeypatch.setenv("CONVERSATION_HISTORY_LIMIT", "10")
 
 
+def _make_fake_content_block(block_type="text", text="Hello, world!", **kwargs):
+    """Build a minimal fake content block (text or tool_use)."""
+    block = MagicMock()
+    block.type = block_type
+    if block_type == "text":
+        block.text = text
+    elif block_type == "tool_use":
+        block.name = kwargs.get("name", "search_indicators")
+        block.input = kwargs.get("input", {"query": "test"})
+        block.id = kwargs.get("id", "toolu_01ABC")
+
+    # Build a dict resembling Anthropic's .model_dump() output
+    full_dump = {"type": block_type, "extra_null": None, **kwargs}
+    if block_type == "text":
+        full_dump.setdefault("text", text)
+    elif block_type == "tool_use":
+        full_dump.setdefault("name", block.name)
+        full_dump.setdefault("input", block.input)
+        full_dump.setdefault("id", block.id)
+
+    def fake_model_dump(exclude_none=False, **_kw):
+        if exclude_none:
+            return {k: v for k, v in full_dump.items() if v is not None}
+        return dict(full_dump)
+
+    block.model_dump = MagicMock(side_effect=fake_model_dump)
+    return block
+
+
+def _make_final_message(stop_reason="end_turn", content_blocks=None):
+    """Build a fake Anthropic Message response object."""
+    msg = MagicMock()
+    msg.stop_reason = stop_reason
+    msg.content = content_blocks or [_make_fake_content_block("text", "Hello, world!")]
+    return msg
+
+
 class FakeStream:
     """Fake async context manager simulating anthropic streaming response."""
 
-    def __init__(self, tokens=None):
+    def __init__(self, tokens=None, stop_reason="end_turn", content_blocks=None):
         self._tokens = tokens or ["Hello", ", ", "world", "!"]
+        self._stop_reason = stop_reason
+        self._content_blocks = content_blocks
 
     async def __aenter__(self):
         return self
@@ -34,6 +74,9 @@ class FakeStream:
                 yield token
 
         return _gen()
+
+    async def get_final_message(self):
+        return _make_final_message(self._stop_reason, self._content_blocks)
 
 
 class FakeStreamError:
@@ -352,6 +395,654 @@ class TestErrorHandling:
         assert sent_messages[0].content.startswith("⚠️")
 
 
+def _make_session_mock_with_history(history=None, mcp_session=None, mcp_tools=None):
+    """Return a cl.user_session mock that serves the given values by key."""
+    store = {
+        "history": history if history is not None else [],
+        "mcp_session": mcp_session,
+        "mcp_tools": mcp_tools if mcp_tools is not None else [],
+    }
+
+    def fake_get(key, default=None):
+        return store.get(key, default)
+
+    mock = MagicMock()
+    mock.get.side_effect = fake_get
+    mock.set = MagicMock()
+    return mock
+
+
+class TestMcpToolUse:
+    """Tests for the MCP agentic tool-use loop."""
+
+    async def test_tools_passed_to_claude_when_mcp_connected(self, reload_chat):
+        """When MCP tools are available, they must be passed to the Claude API call."""
+        tools = [{"name": "search_indicators", "description": "Search", "input_schema": {"type": "object"}}]
+        msg_mock = _make_fake_cl_message()
+        captured_call_kwargs = {}
+
+        def fake_stream(**kwargs):
+            captured_call_kwargs.update(kwargs)
+            return FakeStream(["OK"])
+
+        with (
+            patch("app.chat.cl.Message", return_value=msg_mock),
+            patch("app.chat.cl.user_session", _make_session_mock_with_history(mcp_tools=tools)),
+            patch("app.chat.client.messages.stream", side_effect=fake_stream),
+        ):
+            incoming = MagicMock()
+            incoming.content = "search GDP"
+            await reload_chat.on_message(incoming)
+
+        assert captured_call_kwargs.get("tools") == tools
+
+    async def test_configurable_model_used_in_api_call(self, reload_chat):
+        """The model from settings.claude_model is used in the Claude API call."""
+        msg_mock = _make_fake_cl_message()
+        captured_call_kwargs = {}
+
+        def fake_stream(**kwargs):
+            captured_call_kwargs.update(kwargs)
+            return FakeStream(["OK"])
+
+        with (
+            patch("app.chat.cl.Message", return_value=msg_mock),
+            patch("app.chat.cl.user_session", _make_session_mock_with_history()),
+            patch("app.chat.client.messages.stream", side_effect=fake_stream),
+            patch("app.chat.settings") as settings_mock,
+        ):
+            settings_mock.claude_model = "claude-sonnet-4-5-20250514"
+            settings_mock.claude_max_tokens = 4096
+            settings_mock.max_tool_rounds = 20
+            settings_mock.conversation_history_limit = 10
+            incoming = MagicMock()
+            incoming.content = "test"
+            await reload_chat.on_message(incoming)
+
+        assert captured_call_kwargs["model"] == "claude-sonnet-4-5-20250514"
+
+    async def test_configurable_max_tokens_used_in_api_call(self, reload_chat):
+        """The max_tokens from settings.claude_max_tokens is used in the Claude API call."""
+        msg_mock = _make_fake_cl_message()
+        captured_call_kwargs = {}
+
+        def fake_stream(**kwargs):
+            captured_call_kwargs.update(kwargs)
+            return FakeStream(["OK"])
+
+        with (
+            patch("app.chat.cl.Message", return_value=msg_mock),
+            patch("app.chat.cl.user_session", _make_session_mock_with_history()),
+            patch("app.chat.client.messages.stream", side_effect=fake_stream),
+            patch("app.chat.settings") as settings_mock,
+        ):
+            settings_mock.claude_model = "claude-haiku-4-5"
+            settings_mock.claude_max_tokens = 8192
+            settings_mock.max_tool_rounds = 20
+            settings_mock.conversation_history_limit = 10
+            incoming = MagicMock()
+            incoming.content = "test"
+            await reload_chat.on_message(incoming)
+
+        assert captured_call_kwargs["max_tokens"] == 8192
+
+    async def test_no_tools_passed_when_mcp_not_connected(self, reload_chat):
+        """When no MCP tools available, Claude is called without 'tools' parameter."""
+        msg_mock = _make_fake_cl_message()
+        captured_call_kwargs = {}
+
+        def fake_stream(**kwargs):
+            captured_call_kwargs.update(kwargs)
+            return FakeStream(["OK"])
+
+        with (
+            patch("app.chat.cl.Message", return_value=msg_mock),
+            patch("app.chat.cl.user_session", _make_session_mock_with_history()),
+            patch("app.chat.client.messages.stream", side_effect=fake_stream),
+        ):
+            incoming = MagicMock()
+            incoming.content = "hello"
+            await reload_chat.on_message(incoming)
+
+        assert "tools" not in captured_call_kwargs
+
+    async def test_tool_use_loop_calls_mcp_and_sends_result_back(self, reload_chat):
+        """When Claude returns tool_use, MCP is called and result fed back to Claude."""
+        tool_block = _make_fake_content_block(
+            "tool_use",
+            name="search_indicators",
+            input={"query": "CO2"},
+            id="toolu_001",
+        )
+        text_block = _make_fake_content_block("text", "Here are the results.")
+
+        # First call: Claude requests a tool
+        stream_with_tool = FakeStream(
+            tokens=[],
+            stop_reason="tool_use",
+            content_blocks=[tool_block],
+        )
+        # Second call: Claude provides final answer
+        stream_final = FakeStream(
+            tokens=["Here", " are", " the", " results."],
+            stop_reason="end_turn",
+            content_blocks=[text_block],
+        )
+
+        call_count = 0
+
+        def fake_stream(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            return stream_with_tool if call_count == 1 else stream_final
+
+        # Fake MCP call_tool result
+        fake_mcp_result = MagicMock()
+        fake_mcp_result.isError = False
+        fake_text_content = MagicMock()
+        fake_text_content.text = '{"data": [{"id": "CO2_001"}]}'
+        fake_mcp_result.content = [fake_text_content]
+
+        fake_mcp_session = AsyncMock()
+        fake_mcp_session.call_tool = AsyncMock(return_value=fake_mcp_result)
+
+        tools = [{"name": "search_indicators", "description": "Search", "input_schema": {"type": "object"}}]
+        msg_mock = _make_fake_cl_message()
+
+        step_mock = AsyncMock()
+        step_mock.__aenter__ = AsyncMock(return_value=step_mock)
+        step_mock.__aexit__ = AsyncMock(return_value=False)
+        step_mock.input = ""
+        step_mock.output = ""
+
+        with (
+            patch("app.chat.cl.Message", return_value=msg_mock),
+            patch(
+                "app.chat.cl.user_session",
+                _make_session_mock_with_history(mcp_session=fake_mcp_session, mcp_tools=tools),
+            ),
+            patch("app.chat.client.messages.stream", side_effect=fake_stream),
+            patch("app.chat.cl.Step", return_value=step_mock),
+        ):
+            incoming = MagicMock()
+            incoming.content = "Find CO2 indicators"
+            await reload_chat.on_message(incoming)
+
+        # MCP tool should have been called
+        fake_mcp_session.call_tool.assert_awaited_once_with("search_indicators", arguments={"query": "CO2"})
+        # Claude should have been called twice (once for tool_use, once for final)
+        assert call_count == 2
+
+    async def test_tool_result_appended_to_history_in_loop(self, reload_chat):
+        """Tool results are appended to history before the follow-up Claude call."""
+        tool_block = _make_fake_content_block(
+            "tool_use",
+            name="get_data",
+            input={"database_id": "WB_WDI", "indicator": "CO2"},
+            id="toolu_002",
+        )
+        text_block = _make_fake_content_block("text", "Data found.")
+
+        stream_with_tool = FakeStream(tokens=[], stop_reason="tool_use", content_blocks=[tool_block])
+        stream_final = FakeStream(tokens=["Data found."], stop_reason="end_turn", content_blocks=[text_block])
+
+        call_count = 0
+        captured_histories = []
+
+        def fake_stream(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            captured_histories.append(list(kwargs.get("messages", [])))
+            return stream_with_tool if call_count == 1 else stream_final
+
+        fake_mcp_result = MagicMock()
+        fake_mcp_result.isError = False
+        fake_text = MagicMock()
+        fake_text.text = "tool output text"
+        fake_mcp_result.content = [fake_text]
+
+        fake_mcp_session = AsyncMock()
+        fake_mcp_session.call_tool = AsyncMock(return_value=fake_mcp_result)
+
+        tools = [{"name": "get_data", "description": "Get data", "input_schema": {"type": "object"}}]
+        msg_mock = _make_fake_cl_message()
+        step_mock = AsyncMock()
+        step_mock.__aenter__ = AsyncMock(return_value=step_mock)
+        step_mock.__aexit__ = AsyncMock(return_value=False)
+        step_mock.input = ""
+        step_mock.output = ""
+
+        with (
+            patch("app.chat.cl.Message", return_value=msg_mock),
+            patch(
+                "app.chat.cl.user_session",
+                _make_session_mock_with_history(mcp_session=fake_mcp_session, mcp_tools=tools),
+            ),
+            patch("app.chat.client.messages.stream", side_effect=fake_stream),
+            patch("app.chat.cl.Step", return_value=step_mock),
+        ):
+            incoming = MagicMock()
+            incoming.content = "Get WDI data"
+            await reload_chat.on_message(incoming)
+
+        # Second call should have more history items than the first
+        assert len(captured_histories[1]) > len(captured_histories[0])
+        # The second history should include a user turn with tool results
+        second_call_last = captured_histories[1][-1]
+        assert second_call_last["role"] == "user"
+        assert isinstance(second_call_last["content"], list)
+        assert second_call_last["content"][0]["type"] == "tool_result"
+
+    async def test_mcp_unavailable_error_surfaced_gracefully(self, reload_chat):
+        """When MCP session is None, tool output is an error message — not a crash."""
+        tool_block = _make_fake_content_block(
+            "tool_use",
+            name="search_indicators",
+            input={"query": "population"},
+            id="toolu_003",
+        )
+        text_block = _make_fake_content_block("text", "MCP unavailable, sorry.")
+
+        stream_with_tool = FakeStream(tokens=[], stop_reason="tool_use", content_blocks=[tool_block])
+        stream_final = FakeStream(
+            tokens=["MCP unavailable, sorry."], stop_reason="end_turn", content_blocks=[text_block]
+        )
+
+        call_count = 0
+
+        def fake_stream(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            return stream_with_tool if call_count == 1 else stream_final
+
+        tools = [{"name": "search_indicators", "description": "Search", "input_schema": {"type": "object"}}]
+        msg_mock = _make_fake_cl_message()
+        step_mock = AsyncMock()
+        step_mock.__aenter__ = AsyncMock(return_value=step_mock)
+        step_mock.__aexit__ = AsyncMock(return_value=False)
+        step_mock.input = ""
+        step_mock.output = ""
+
+        # mcp_session is None — simulates unavailable MCP server
+        with (
+            patch("app.chat.cl.Message", return_value=msg_mock),
+            patch("app.chat.cl.user_session", _make_session_mock_with_history(mcp_session=None, mcp_tools=tools)),
+            patch("app.chat.client.messages.stream", side_effect=fake_stream),
+            patch("app.chat.cl.Step", return_value=step_mock),
+        ):
+            incoming = MagicMock()
+            incoming.content = "Find population data"
+            await reload_chat.on_message(incoming)
+
+        # Should still complete (2 Claude calls) without crashing
+        assert call_count == 2
+        msg_mock.update.assert_awaited_once()
+
+    async def test_mcp_tool_error_passed_to_claude(self, reload_chat):
+        """When MCP tool returns an error, the error text is sent to Claude as tool_result."""
+        tool_block = _make_fake_content_block(
+            "tool_use",
+            name="get_data",
+            input={"database_id": "BAD_DB", "indicator": "BAD_IND"},
+            id="toolu_004",
+        )
+        text_block = _make_fake_content_block("text", "I could not retrieve that data.")
+
+        stream_with_tool = FakeStream(tokens=[], stop_reason="tool_use", content_blocks=[tool_block])
+        stream_final = FakeStream(
+            tokens=["I could not retrieve that data."], stop_reason="end_turn", content_blocks=[text_block]
+        )
+
+        call_count = 0
+        captured_second_messages = []
+
+        def fake_stream(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 2:
+                captured_second_messages.extend(kwargs.get("messages", []))
+            return stream_with_tool if call_count == 1 else stream_final
+
+        # MCP returns an error result
+        fake_mcp_result = MagicMock()
+        fake_mcp_result.isError = True
+        fake_err_text = MagicMock()
+        fake_err_text.text = "Database not found"
+        fake_mcp_result.content = [fake_err_text]
+
+        fake_mcp_session = AsyncMock()
+        fake_mcp_session.call_tool = AsyncMock(return_value=fake_mcp_result)
+
+        tools = [{"name": "get_data", "description": "Get data", "input_schema": {"type": "object"}}]
+        msg_mock = _make_fake_cl_message()
+        step_mock = AsyncMock()
+        step_mock.__aenter__ = AsyncMock(return_value=step_mock)
+        step_mock.__aexit__ = AsyncMock(return_value=False)
+        step_mock.input = ""
+        step_mock.output = ""
+
+        with (
+            patch("app.chat.cl.Message", return_value=msg_mock),
+            patch(
+                "app.chat.cl.user_session",
+                _make_session_mock_with_history(mcp_session=fake_mcp_session, mcp_tools=tools),
+            ),
+            patch("app.chat.client.messages.stream", side_effect=fake_stream),
+            patch("app.chat.cl.Step", return_value=step_mock),
+        ):
+            incoming = MagicMock()
+            incoming.content = "Get bad data"
+            await reload_chat.on_message(incoming)
+
+        # The tool result content sent to Claude should contain the error text
+        tool_result_turn = captured_second_messages[-1]
+        assert tool_result_turn["role"] == "user"
+        tool_result_content = tool_result_turn["content"][0]["content"]
+        assert "Error" in tool_result_content
+        assert "Database not found" in tool_result_content
+
+    async def test_on_mcp_connect_stores_tools_in_session(self, reload_chat):
+        """on_mcp_connect stores mcp_session and mcp_tools in cl.user_session."""
+        from mcp.types import Tool
+
+        fake_tool = MagicMock(spec=Tool)
+        fake_tool.name = "search_indicators"
+        fake_tool.description = "Search"
+        fake_tool.inputSchema = {"type": "object", "properties": {}}
+
+        fake_session = AsyncMock()
+        list_result = MagicMock()
+        list_result.tools = [fake_tool]
+        fake_session.list_tools = AsyncMock(return_value=list_result)
+
+        fake_connection = MagicMock()
+        stored = {}
+
+        with patch("app.chat.cl.user_session") as session_mock:
+            session_mock.set.side_effect = lambda k, v: stored.update({k: v})
+            await reload_chat.on_mcp_connect(fake_connection, fake_session)
+
+        assert stored.get("mcp_session") is fake_session
+        assert len(stored.get("mcp_tools", [])) == 1
+        assert stored["mcp_tools"][0]["name"] == "search_indicators"
+
+    async def test_on_mcp_disconnect_clears_session(self, reload_chat):
+        """on_mcp_disconnect clears mcp_session and mcp_tools from cl.user_session."""
+        stored = {}
+
+        fake_session = AsyncMock()
+
+        with patch("app.chat.cl.user_session") as session_mock:
+            session_mock.set.side_effect = lambda k, v: stored.update({k: v})
+            await reload_chat.on_mcp_disconnect("data360", fake_session)
+
+        assert stored.get("mcp_session") is None
+        assert stored.get("mcp_tools") == []
+
+    async def test_mcp_tools_to_anthropic_format(self, reload_chat):
+        """_mcp_tools_to_anthropic converts MCP Tool objects to Anthropic tool dicts."""
+        from app.chat import _mcp_tools_to_anthropic
+
+        tool = MagicMock()
+        tool.name = "search_indicators"
+        tool.description = "Search for indicators"
+        tool.inputSchema = {"type": "object", "properties": {"query": {"type": "string"}}}
+
+        result = _mcp_tools_to_anthropic([tool])
+        assert len(result) == 1
+        assert result[0]["name"] == "search_indicators"
+        assert result[0]["description"] == "Search for indicators"
+        assert result[0]["input_schema"] == tool.inputSchema
+
+    async def test_extract_tool_result_text_success(self, reload_chat):
+        """_extract_tool_result_text joins text blocks from a successful MCP result."""
+        from app.chat import _extract_tool_result_text
+
+        result = MagicMock()
+        result.isError = False
+        block = MagicMock()
+        block.text = '{"data": [1, 2, 3]}'
+        result.content = [block]
+
+        text = _extract_tool_result_text(result)
+        assert text == '{"data": [1, 2, 3]}'
+
+    async def test_extract_tool_result_text_error(self, reload_chat):
+        """_extract_tool_result_text prefixes with 'Error:' when isError=True."""
+        from app.chat import _extract_tool_result_text
+
+        result = MagicMock()
+        result.isError = True
+        block = MagicMock()
+        block.text = "Connection refused"
+        result.content = [block]
+
+        text = _extract_tool_result_text(result)
+        assert text.startswith("Error:")
+        assert "Connection refused" in text
+
+
+class TestAgenticLoopIntegration:
+    """AC1/AC2: Integration-level tests verifying full agentic loop history structure."""
+
+    async def test_multi_tool_chain_produces_correct_history_structure(self, reload_chat):
+        """AC1: A multi-step tool chain (search_indicators -> get_data) produces correct history."""
+        search_block = _make_fake_content_block(
+            "tool_use", name="search_indicators", input={"query": "CO2"}, id="toolu_search"
+        )
+        get_data_block = _make_fake_content_block(
+            "tool_use", name="get_data", input={"database_id": "WB_WDI", "indicator": "CO2"}, id="toolu_getdata"
+        )
+        final_text_block = _make_fake_content_block("text", "Brazil's CO2 emissions are 500Mt.")
+
+        # Step 1: Claude calls search_indicators
+        stream_search = FakeStream(tokens=[], stop_reason="tool_use", content_blocks=[search_block])
+        # Step 2: Claude calls get_data
+        stream_getdata = FakeStream(tokens=[], stop_reason="tool_use", content_blocks=[get_data_block])
+        # Step 3: Claude produces final answer
+        stream_final = FakeStream(
+            tokens=["Brazil's CO2 emissions are 500Mt."], stop_reason="end_turn", content_blocks=[final_text_block]
+        )
+
+        call_count = 0
+        captured_histories = []
+
+        def fake_stream(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            import copy
+
+            captured_histories.append(copy.deepcopy(kwargs.get("messages", [])))
+            if call_count == 1:
+                return stream_search
+            elif call_count == 2:
+                return stream_getdata
+            else:
+                return stream_final
+
+        # Fake MCP results for both calls
+        fake_search_result = MagicMock()
+        fake_search_result.isError = False
+        fake_search_text = MagicMock()
+        fake_search_text.text = '{"success": true, "data": [{"INDICATOR_ID": "CO2"}]}'
+        fake_search_result.content = [fake_search_text]
+
+        fake_data_result = MagicMock()
+        fake_data_result.isError = False
+        fake_data_text = MagicMock()
+        fake_data_text.text = '{"success": true, "data": [{"VALUE": 500}]}'
+        fake_data_result.content = [fake_data_text]
+
+        fake_mcp_session = AsyncMock()
+        call_tool_results = [fake_search_result, fake_data_result]
+        fake_mcp_session.call_tool = AsyncMock(side_effect=call_tool_results)
+
+        tools = [
+            {"name": "search_indicators", "description": "Search", "input_schema": {"type": "object"}},
+            {"name": "get_data", "description": "Get data", "input_schema": {"type": "object"}},
+        ]
+        msg_mock = _make_fake_cl_message()
+        step_mock = AsyncMock()
+        step_mock.__aenter__ = AsyncMock(return_value=step_mock)
+        step_mock.__aexit__ = AsyncMock(return_value=False)
+        step_mock.input = ""
+        step_mock.output = ""
+
+        with (
+            patch("app.chat.cl.Message", return_value=msg_mock),
+            patch(
+                "app.chat.cl.user_session",
+                _make_session_mock_with_history(mcp_session=fake_mcp_session, mcp_tools=tools),
+            ),
+            patch("app.chat.client.messages.stream", side_effect=fake_stream),
+            patch("app.chat.cl.Step", return_value=step_mock),
+        ):
+            incoming = MagicMock()
+            incoming.content = "What are CO2 emissions in Brazil?"
+            await reload_chat.on_message(incoming)
+
+        # 3 Claude calls: search tool, get_data tool, final text
+        assert call_count == 3
+
+        # Second call should have: user msg, assistant tool_use, user tool_result
+        assert len(captured_histories[1]) == 3
+        assert captured_histories[1][0]["role"] == "user"
+        assert captured_histories[1][1]["role"] == "assistant"
+        assert captured_histories[1][2]["role"] == "user"
+        assert captured_histories[1][2]["content"][0]["type"] == "tool_result"
+
+        # Third call should have 5 entries: user, asst(tool), user(result), asst(tool), user(result)
+        assert len(captured_histories[2]) == 5
+        assert captured_histories[2][3]["role"] == "assistant"
+        assert captured_histories[2][4]["role"] == "user"
+        assert captured_histories[2][4]["content"][0]["type"] == "tool_result"
+
+    async def test_tool_result_content_blocks_correctly_formatted(self, reload_chat):
+        """AC2: Tool results are correctly formatted as tool_result content blocks for Claude."""
+        tool_block = _make_fake_content_block(
+            "tool_use", name="search_indicators", input={"query": "GDP"}, id="toolu_fmt"
+        )
+        text_block = _make_fake_content_block("text", "Done.")
+
+        stream_tool = FakeStream(tokens=[], stop_reason="tool_use", content_blocks=[tool_block])
+        stream_final = FakeStream(tokens=["Done."], stop_reason="end_turn", content_blocks=[text_block])
+
+        call_count = 0
+        captured_histories = []
+
+        def fake_stream(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            import copy
+
+            captured_histories.append(copy.deepcopy(kwargs.get("messages", [])))
+            return stream_tool if call_count == 1 else stream_final
+
+        fake_mcp_result = MagicMock()
+        fake_mcp_result.isError = False
+        fake_text = MagicMock()
+        fake_text.text = '{"success": true, "data": [{"id": "GDP_001"}]}'
+        fake_mcp_result.content = [fake_text]
+
+        fake_mcp_session = AsyncMock()
+        fake_mcp_session.call_tool = AsyncMock(return_value=fake_mcp_result)
+
+        tools = [{"name": "search_indicators", "description": "Search", "input_schema": {"type": "object"}}]
+        msg_mock = _make_fake_cl_message()
+        step_mock = AsyncMock()
+        step_mock.__aenter__ = AsyncMock(return_value=step_mock)
+        step_mock.__aexit__ = AsyncMock(return_value=False)
+        step_mock.input = ""
+        step_mock.output = ""
+
+        with (
+            patch("app.chat.cl.Message", return_value=msg_mock),
+            patch(
+                "app.chat.cl.user_session",
+                _make_session_mock_with_history(mcp_session=fake_mcp_session, mcp_tools=tools),
+            ),
+            patch("app.chat.client.messages.stream", side_effect=fake_stream),
+            patch("app.chat.cl.Step", return_value=step_mock),
+        ):
+            incoming = MagicMock()
+            incoming.content = "Search GDP"
+            await reload_chat.on_message(incoming)
+
+        # Verify tool_result block structure in the second call
+        tool_result_turn = captured_histories[1][-1]
+        assert tool_result_turn["role"] == "user"
+        tool_result_block = tool_result_turn["content"][0]
+        assert tool_result_block["type"] == "tool_result"
+        assert tool_result_block["tool_use_id"] == "toolu_fmt"
+        assert "content" in tool_result_block
+        assert '{"success": true' in tool_result_block["content"]
+
+    async def test_history_includes_text_and_tool_use_blocks_after_chain(self, reload_chat):
+        """AC1: After a multi-step chain, history includes both text and tool_use content blocks."""
+        # Claude first returns a text + tool_use in one response
+        text_thinking = _make_fake_content_block("text", "Let me search for that.")
+        tool_block = _make_fake_content_block(
+            "tool_use", name="search_indicators", input={"query": "population"}, id="toolu_mixed"
+        )
+        final_block = _make_fake_content_block("text", "Here is the data.")
+
+        stream_mixed = FakeStream(
+            tokens=["Let me search for that."],
+            stop_reason="tool_use",
+            content_blocks=[text_thinking, tool_block],
+        )
+        stream_final = FakeStream(tokens=["Here is the data."], stop_reason="end_turn", content_blocks=[final_block])
+
+        call_count = 0
+        captured_histories = []
+
+        def fake_stream(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            import copy
+
+            captured_histories.append(copy.deepcopy(kwargs.get("messages", [])))
+            return stream_mixed if call_count == 1 else stream_final
+
+        fake_mcp_result = MagicMock()
+        fake_mcp_result.isError = False
+        fake_text = MagicMock()
+        fake_text.text = "population data"
+        fake_mcp_result.content = [fake_text]
+
+        fake_mcp_session = AsyncMock()
+        fake_mcp_session.call_tool = AsyncMock(return_value=fake_mcp_result)
+
+        tools = [{"name": "search_indicators", "description": "Search", "input_schema": {"type": "object"}}]
+        msg_mock = _make_fake_cl_message()
+        step_mock = AsyncMock()
+        step_mock.__aenter__ = AsyncMock(return_value=step_mock)
+        step_mock.__aexit__ = AsyncMock(return_value=False)
+        step_mock.input = ""
+        step_mock.output = ""
+
+        with (
+            patch("app.chat.cl.Message", return_value=msg_mock),
+            patch(
+                "app.chat.cl.user_session",
+                _make_session_mock_with_history(mcp_session=fake_mcp_session, mcp_tools=tools),
+            ),
+            patch("app.chat.client.messages.stream", side_effect=fake_stream),
+            patch("app.chat.cl.Step", return_value=step_mock),
+        ):
+            incoming = MagicMock()
+            incoming.content = "Find population data"
+            await reload_chat.on_message(incoming)
+
+        # The assistant message in the second call's history should have mixed content blocks
+        assistant_msg = captured_histories[1][1]
+        assert assistant_msg["role"] == "assistant"
+        assert isinstance(assistant_msg["content"], list)
+        # Should contain both text and tool_use block types (from model_dump)
+        block_types = {b.get("type") for b in assistant_msg["content"] if isinstance(b, dict)}
+        assert "text" in block_types or "tool_use" in block_types
+
+
 class TestConfig:
     def test_config_loads_conversation_history_limit(self, monkeypatch):
         """CONVERSATION_HISTORY_LIMIT env var is read correctly."""
@@ -374,3 +1065,262 @@ class TestConfig:
 
         settings = Settings(_env_file=None)
         assert settings.conversation_history_limit == 10
+
+    def test_config_claude_model_default(self, monkeypatch):
+        """Default claude_model is 'claude-haiku-4-5'."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+        monkeypatch.delenv("CLAUDE_MODEL", raising=False)
+
+        from app.config import Settings
+
+        s = Settings(_env_file=None)
+        assert s.claude_model == "claude-haiku-4-5"
+
+    def test_config_claude_model_from_env(self, monkeypatch):
+        """CLAUDE_MODEL env var overrides the default."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+        monkeypatch.setenv("CLAUDE_MODEL", "claude-sonnet-4-5-20250514")
+
+        from app.config import Settings
+
+        s = Settings(_env_file=None)
+        assert s.claude_model == "claude-sonnet-4-5-20250514"
+
+    def test_config_claude_max_tokens_default(self, monkeypatch):
+        """Default claude_max_tokens is 4096."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+        monkeypatch.delenv("CLAUDE_MAX_TOKENS", raising=False)
+
+        from app.config import Settings
+
+        s = Settings(_env_file=None)
+        assert s.claude_max_tokens == 4096
+
+    def test_config_claude_max_tokens_from_env(self, monkeypatch):
+        """CLAUDE_MAX_TOKENS env var overrides the default."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+        monkeypatch.setenv("CLAUDE_MAX_TOKENS", "8192")
+
+        from app.config import Settings
+
+        s = Settings(_env_file=None)
+        assert s.claude_max_tokens == 8192
+
+    def test_config_tool_result_max_chars_default(self, monkeypatch):
+        """Default tool_result_max_chars is 50000."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+        monkeypatch.delenv("TOOL_RESULT_MAX_CHARS", raising=False)
+
+        from app.config import Settings
+
+        s = Settings(_env_file=None)
+        assert s.tool_result_max_chars == 50000
+
+    def test_config_tool_result_max_chars_from_env(self, monkeypatch):
+        """TOOL_RESULT_MAX_CHARS env var overrides the default."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
+        monkeypatch.setenv("TOOL_RESULT_MAX_CHARS", "10000")
+
+        from app.config import Settings
+
+        s = Settings(_env_file=None)
+        assert s.tool_result_max_chars == 10000
+
+
+class TestModelDumpExcludeNone:
+    """Verify model_dump(exclude_none=True) is used for assistant content blocks."""
+
+    async def test_assistant_content_blocks_exclude_none_fields(self, reload_chat):
+        """model_dump must be called with exclude_none=True to avoid sending null fields to API."""
+        tool_block = _make_fake_content_block(
+            "tool_use", name="search_indicators", input={"query": "CO2"}, id="toolu_001"
+        )
+        text_block = _make_fake_content_block("text", "Results.")
+
+        stream_tool = FakeStream(tokens=[], stop_reason="tool_use", content_blocks=[tool_block])
+        stream_final = FakeStream(tokens=["Results."], stop_reason="end_turn", content_blocks=[text_block])
+
+        call_count = 0
+        captured_histories = []
+
+        def fake_stream(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            import copy
+
+            captured_histories.append(copy.deepcopy(kwargs.get("messages", [])))
+            return stream_tool if call_count == 1 else stream_final
+
+        fake_mcp_result = MagicMock()
+        fake_mcp_result.isError = False
+        fake_text = MagicMock()
+        fake_text.text = "data"
+        fake_mcp_result.content = [fake_text]
+
+        fake_mcp_session = AsyncMock()
+        fake_mcp_session.call_tool = AsyncMock(return_value=fake_mcp_result)
+
+        tools = [{"name": "search_indicators", "description": "Search", "input_schema": {"type": "object"}}]
+        msg_mock = _make_fake_cl_message()
+        step_mock = AsyncMock()
+        step_mock.__aenter__ = AsyncMock(return_value=step_mock)
+        step_mock.__aexit__ = AsyncMock(return_value=False)
+        step_mock.input = ""
+        step_mock.output = ""
+
+        with (
+            patch("app.chat.cl.Message", return_value=msg_mock),
+            patch(
+                "app.chat.cl.user_session",
+                _make_session_mock_with_history(mcp_session=fake_mcp_session, mcp_tools=tools),
+            ),
+            patch("app.chat.client.messages.stream", side_effect=fake_stream),
+            patch("app.chat.cl.Step", return_value=step_mock),
+        ):
+            incoming = MagicMock()
+            incoming.content = "Search CO2"
+            await reload_chat.on_message(incoming)
+
+        # The assistant content blocks in the second call must have no None values
+        assistant_msg = captured_histories[1][1]
+        assert assistant_msg["role"] == "assistant"
+        for block in assistant_msg["content"]:
+            for value in block.values():
+                assert value is not None, f"Found None value in block: {block}"
+
+
+class TestToolResultTruncation:
+    """Verify large tool results are truncated before feeding back to Claude."""
+
+    async def test_large_tool_result_is_truncated(self, reload_chat):
+        """Tool results exceeding max chars should be truncated with a marker."""
+        from app.chat import _extract_tool_result_text
+
+        large_text = "x" * 60000
+        result = MagicMock()
+        result.isError = False
+        block = MagicMock()
+        block.text = large_text
+        result.content = [block]
+
+        text = _extract_tool_result_text(result)
+        assert len(text) < 60000
+        assert "[truncated]" in text.lower() or "truncated" in text.lower()
+
+    async def test_small_tool_result_not_truncated(self, reload_chat):
+        """Tool results within limit should not be truncated."""
+        from app.chat import _extract_tool_result_text
+
+        small_text = '{"data": [1, 2, 3]}'
+        result = MagicMock()
+        result.isError = False
+        block = MagicMock()
+        block.text = small_text
+        result.content = [block]
+
+        text = _extract_tool_result_text(result)
+        assert text == small_text
+
+
+def _make_fake_mcp_tool():
+    """Build a fake MCP tool for auto-connect tests."""
+    from mcp.types import Tool
+
+    tool = MagicMock(spec=Tool)
+    tool.name = "search_indicators"
+    tool.description = "Search"
+    tool.inputSchema = {"type": "object", "properties": {}}
+    return tool
+
+
+@contextlib.asynccontextmanager
+async def _fake_streamablehttp_client(url, **kwargs):
+    """Fake streamablehttp_client that yields mock read/write streams."""
+    yield (MagicMock(), MagicMock(), lambda: None)
+
+
+class TestMcpAutoConnect:
+    """Tests for MCP auto-connection on chat start."""
+
+    async def test_on_chat_start_auto_connects_mcp(self, reload_chat):
+        """on_chat_start should auto-connect to MCP and store session/tools."""
+        fake_tool = _make_fake_mcp_tool()
+        fake_session = AsyncMock()
+        list_result = MagicMock()
+        list_result.tools = [fake_tool]
+        fake_session.list_tools = AsyncMock(return_value=list_result)
+        fake_session.initialize = AsyncMock()
+
+        stored = {}
+        msg_mock = AsyncMock()
+        msg_mock.send = AsyncMock()
+
+        with (
+            patch("app.chat.streamablehttp_client", _fake_streamablehttp_client),
+            patch("app.chat.ClientSession", return_value=fake_session),
+            patch("app.chat.cl.user_session") as session_mock,
+            patch("app.chat.cl.Message", return_value=msg_mock),
+        ):
+            session_mock.set.side_effect = lambda k, v: stored.update({k: v})
+            # Make ClientSession work as async context manager
+            fake_session.__aenter__ = AsyncMock(return_value=fake_session)
+            fake_session.__aexit__ = AsyncMock(return_value=False)
+
+            await reload_chat.on_chat_start()
+
+        assert stored.get("mcp_session") is fake_session
+        assert len(stored.get("mcp_tools", [])) == 1
+        assert stored["mcp_tools"][0]["name"] == "search_indicators"
+        fake_session.initialize.assert_awaited_once()
+
+    async def test_on_chat_start_auto_connect_failure_graceful(self, reload_chat):
+        """If MCP auto-connect fails, chat start still completes without tools."""
+        stored = {}
+        msg_mock = AsyncMock()
+        msg_mock.send = AsyncMock()
+
+        @contextlib.asynccontextmanager
+        async def failing_client(url, **kwargs):
+            raise ConnectionError("MCP server not running")
+            yield  # pragma: no cover
+
+        with (
+            patch("app.chat.streamablehttp_client", failing_client),
+            patch("app.chat.cl.user_session") as session_mock,
+            patch("app.chat.cl.Message", return_value=msg_mock),
+        ):
+            session_mock.set.side_effect = lambda k, v: stored.update({k: v})
+
+            # Should not raise
+            await reload_chat.on_chat_start()
+
+        # Session should be None, tools should be empty
+        assert stored.get("mcp_session") is None
+        assert stored.get("mcp_tools") == []
+        # Welcome message should still be sent
+        msg_mock.send.assert_awaited_once()
+
+    async def test_on_chat_end_closes_exit_stack(self, reload_chat):
+        """on_chat_end should close the AsyncExitStack to clean up MCP connection."""
+        mock_stack = AsyncMock()
+
+        with patch("app.chat.cl.user_session") as session_mock:
+            session_mock.get.return_value = mock_stack
+
+            await reload_chat.on_chat_end()
+
+        mock_stack.aclose.assert_awaited_once()
+
+    async def test_on_chat_end_handles_no_stack(self, reload_chat):
+        """on_chat_end should handle gracefully when no exit stack exists."""
+        with patch("app.chat.cl.user_session") as session_mock:
+            session_mock.get.return_value = None
+
+            # Should not raise
+            await reload_chat.on_chat_end()

@@ -411,7 +411,26 @@ So that users have a chat interface to interact with the system.
 **And** environment variables are used for all secrets (NFR5, NFR6)
 **And** all external API communication uses HTTPS (NFR7)
 
-### Story 2.2: MCP Client Integration with Claude Tool Use
+### Story 2.2: Claude API Integration with Streaming
+
+As a user,
+I want to see the AI's response appear word-by-word in real time,
+So that I don't have to wait for the full response before seeing results.
+
+**Acceptance Criteria:**
+
+**Given** a user sends a question
+**When** Claude generates a response
+**Then** tokens stream to the UI via Socket.IO (Chainlit's WebSocket)
+**And** the first token appears within 3 seconds for uncached queries (NFR1)
+**And** the full response completes within 15 seconds for uncached queries (NFR2)
+
+**Given** Claude is making tool calls before responding
+**When** tool call status changes
+**Then** intermediate steps are displayed (e.g., "Searching indicators...", "Fetching data...")
+**And** the user sees progress before the narrative response begins
+
+### Story 2.3: MCP Client Integration with Claude Tool Use
 
 As a user,
 I want my natural language questions to be processed by Claude using the MCP server tools,
@@ -435,25 +454,6 @@ So that my questions are answered with real World Bank data.
 **When** a tool call fails
 **Then** the structured error response is passed to Claude
 **And** Claude narrates the failure transparently to the user (NFR9)
-
-### Story 2.3: Streaming Responses
-
-As a user,
-I want to see the AI's response appear word-by-word in real time,
-So that I don't have to wait for the full response before seeing results.
-
-**Acceptance Criteria:**
-
-**Given** a user sends a question
-**When** Claude generates a response
-**Then** tokens stream to the UI via Socket.IO (Chainlit's WebSocket)
-**And** the first token appears within 3 seconds for uncached queries (NFR1)
-**And** the full response completes within 15 seconds for uncached queries (NFR2)
-
-**Given** Claude is making tool calls before responding
-**When** tool call status changes
-**Then** intermediate steps are displayed (e.g., "Searching indicators...", "Fetching data...")
-**And** the user sees progress before the narrative response begins
 
 ### Story 2.4: Narrative Response Generation
 
