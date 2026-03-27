@@ -239,9 +239,11 @@ async def get_disaggregation(
 
 
 if __name__ == "__main__":
-    import os
+    from mcp_server.config import MCP_PORT, MCP_TRANSPORT
 
-    transport = os.getenv("MCP_TRANSPORT", "stdio")
-    if transport not in {"stdio", "streamable-http"}:
-        raise ValueError(f"Invalid MCP_TRANSPORT '{transport}'. Valid values: stdio, streamable-http")
-    mcp.run(transport=transport)
+    if MCP_TRANSPORT not in {"stdio", "streamable-http"}:
+        raise ValueError(f"Invalid MCP_TRANSPORT '{MCP_TRANSPORT}'. Valid values: stdio, streamable-http")
+    if MCP_TRANSPORT == "streamable-http":
+        mcp.run(transport=MCP_TRANSPORT, port=MCP_PORT)
+    else:
+        mcp.run(transport=MCP_TRANSPORT)
