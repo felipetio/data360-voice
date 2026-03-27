@@ -42,6 +42,8 @@ async def on_mcp_connect(connection, session: ClientSession) -> None:
         logger.info("MCP connected: %d tools available", len(tools))
     except Exception:
         logger.exception("Failed to list MCP tools on connect")
+        cl.user_session.set(_MCP_SESSION_KEY, session)
+        cl.user_session.set(_MCP_TOOLS_KEY, [])
 
 
 @cl.on_mcp_disconnect
@@ -159,12 +161,13 @@ async def on_message(message: cl.Message):
         # Mutable copy of history for the agentic loop
         loop_history = list(history)
 
-        final_text = await _agentic_loop(loop_history, tools, mcp_session, msg)
+        await _agentic_loop(loop_history, tools, mcp_session, msg)
 
         await msg.update()
 
-        # Append assistant reply to persistent history and save
-        history.append({"role": "assistant", "content": final_text})
+        # Append assistant reply to persistent history (use msg.content for consistency
+        # with what was actually streamed to the user)
+        history.append({"role": "assistant", "content": msg.content})
         cl.user_session.set("history", history)
 
     except Exception as e:
@@ -196,20 +199,23 @@ async def _agentic_loop(
     if tools:
         call_kwargs["tools"] = tools
 
+    max_rounds = settings.max_tool_rounds
+    tool_round = 0
+
     while True:
-        # Build messages for this iteration
+        tool_round += 1
+        if tool_round > max_rounds:
+            logger.error("Exceeded maximum tool rounds (%d), aborting agentic loop.", max_rounds)
+            return (
+                "I'm sorry, but I had to stop because I exceeded the maximum number "
+                "of tool calls. Please try rephrasing or simplifying your request."
+            )
         call_kwargs["messages"] = history
 
-        # If we might still get tool_use, use non-streaming create() to handle
-        # the full response; only stream when we're confident it's text-only.
-        # Strategy: always try streaming first; if stop_reason is tool_use, handle it.
         async with client.messages.stream(**call_kwargs) as stream:
-            # Collect all text tokens and gather the final message for stop_reason check
-            streamed_text = ""
+            tokens: list[str] = []
             async for text_token in stream.text_stream:
-                streamed_text += text_token
-                # Only stream to UI once (first text pass) — subsequent iterations
-                # won't stream since they follow tool calls, but we still collect text
+                tokens.append(text_token)
                 await msg.stream_token(text_token)
 
             final_message = await stream.get_final_message()
@@ -217,8 +223,11 @@ async def _agentic_loop(
         stop_reason = final_message.stop_reason
 
         if stop_reason != "tool_use":
-            # Done — return the assembled text
-            return streamed_text
+            return "".join(tokens)
+
+        # Reset the UI message for the next iteration so intermediate
+        # "thinking" text from tool-use rounds doesn't leak to the user.
+        msg.content = ""
 
         # --- Handle tool_use blocks ---
         # Append assistant response (may contain both text and tool_use blocks)
@@ -264,7 +273,3 @@ async def _agentic_loop(
 
         # Append tool results to history and loop
         history.append({"role": "user", "content": tool_results})
-
-        # Clear the streaming message content for the next loop pass —
-        # subsequent text is appended to the same message bubble
-        # (stream_token accumulates; no reset needed since we keep appending)

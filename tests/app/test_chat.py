@@ -26,7 +26,15 @@ def _make_fake_content_block(block_type="text", text="Hello, world!", **kwargs):
         block.name = kwargs.get("name", "search_indicators")
         block.input = kwargs.get("input", {"query": "test"})
         block.id = kwargs.get("id", "toolu_01ABC")
+
+    # Build a dict resembling Anthropic's .model_dump() output
     full_dump = {"type": block_type, "extra_null": None, **kwargs}
+    if block_type == "text":
+        full_dump.setdefault("text", text)
+    elif block_type == "tool_use":
+        full_dump.setdefault("name", block.name)
+        full_dump.setdefault("input", block.input)
+        full_dump.setdefault("id", block.id)
 
     def fake_model_dump(exclude_none=False, **_kw):
         if exclude_none:
@@ -445,6 +453,7 @@ class TestMcpToolUse:
         ):
             settings_mock.claude_model = "claude-sonnet-4-5-20250514"
             settings_mock.claude_max_tokens = 4096
+            settings_mock.max_tool_rounds = 20
             settings_mock.conversation_history_limit = 10
             incoming = MagicMock()
             incoming.content = "test"
@@ -469,6 +478,7 @@ class TestMcpToolUse:
         ):
             settings_mock.claude_model = "claude-haiku-4-5"
             settings_mock.claude_max_tokens = 8192
+            settings_mock.max_tool_rounds = 20
             settings_mock.conversation_history_limit = 10
             incoming = MagicMock()
             incoming.content = "test"
