@@ -58,7 +58,7 @@ development_status:
   2-1-chainlit-fastapi-application-setup: done
   2-2-claude-api-integration-with-streaming: done
   2-3-mcp-client-integration-with-claude-tool-use: done
-  2-4-narrative-response-generation: backlog
+  2-4-narrative-response-generation: ready-for-dev
   2-5-multi-turn-conversation-support: backlog
   2-6-conversation-persistence-and-history: backlog
   epic-2-retrospective: optional
