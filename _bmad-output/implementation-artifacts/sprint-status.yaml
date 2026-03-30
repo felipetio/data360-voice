@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-24
-last_updated: 2026-03-27
+last_updated: 2026-03-30
 project: bmad
 project_key: NOKEY
 tracking_system: file-system
@@ -58,7 +58,7 @@ development_status:
   2-1-chainlit-fastapi-application-setup: done
   2-2-claude-api-integration-with-streaming: done
   2-3-mcp-client-integration-with-claude-tool-use: done
-  2-4-narrative-response-generation: review
+  2-4-narrative-response-generation: done
   2-5-multi-turn-conversation-support: backlog
   2-6-conversation-persistence-and-history: backlog
   epic-2-retrospective: optional
