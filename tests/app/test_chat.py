@@ -1043,6 +1043,62 @@ class TestAgenticLoopIntegration:
         assert "text" in block_types or "tool_use" in block_types
 
 
+class TestNarrativeGeneration:
+    """AC1/AC2/AC3/AC4: System prompt instructs narrative response generation."""
+
+    def test_system_prompt_instructs_trend_narration(self):
+        """AC1: System prompt must instruct trend direction narration from time-series data."""
+        from app.prompts import SYSTEM_PROMPT
+
+        # Must instruct on TIME_PERIOD-based trend analysis
+        prompt_lower = SYSTEM_PROMPT.lower()
+        assert "time_period" in SYSTEM_PROMPT or "time series" in prompt_lower or "trend" in prompt_lower
+        # Must include trend direction vocabulary
+        assert any(
+            phrase in SYSTEM_PROMPT
+            for phrase in ["rising", "falling", "stable", "accelerating", "decelerating", "rose", "fell", "flat"]
+        )
+
+    def test_system_prompt_instructs_multi_country_comparison(self):
+        """AC2: System prompt must instruct comparison narration for multi-country data."""
+        from app.prompts import SYSTEM_PROMPT
+
+        prompt_lower = SYSTEM_PROMPT.lower()
+        assert any(
+            phrase in prompt_lower
+            for phrase in ["multi-country", "multiple countries", "ref_area", "comparison", "compare"]
+        )
+
+    def test_system_prompt_instructs_no_data_found_response(self):
+        """AC4: System prompt must instruct 'No relevant data found' response for empty results."""
+        from app.prompts import SYSTEM_PROMPT
+
+        assert "No relevant data found" in SYSTEM_PROMPT or "no relevant data" in SYSTEM_PROMPT.lower()
+
+    def test_system_prompt_preserves_grounding_constraints(self):
+        """AC1/AC2/AC3/AC4: Grounding constraints (no causal claims, no forecasts) must remain."""
+        from app.prompts import SYSTEM_PROMPT
+
+        prompt_lower = SYSTEM_PROMPT.lower()
+        # No causal claims
+        assert "causal" in prompt_lower or "caused" in prompt_lower
+        # No forecasts
+        assert "forecast" in prompt_lower or "prediction" in prompt_lower
+
+    def test_system_prompt_instructs_citation_source(self):
+        """AC1/AC2: System prompt must reference CITATION_SOURCE for citation format."""
+        from app.prompts import SYSTEM_PROMPT
+
+        assert "CITATION_SOURCE" in SYSTEM_PROMPT
+
+    def test_system_prompt_instructs_gap_flagging(self):
+        """AC3: System prompt must instruct flagging of missing years/gaps in data."""
+        from app.prompts import SYSTEM_PROMPT
+
+        prompt_lower = SYSTEM_PROMPT.lower()
+        assert any(phrase in prompt_lower for phrase in ["gap", "missing", "not available", "data is not available"])
+
+
 class TestConfig:
     def test_config_loads_conversation_history_limit(self, monkeypatch):
         """CONVERSATION_HISTORY_LIMIT env var is read correctly."""
