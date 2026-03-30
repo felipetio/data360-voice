@@ -1,6 +1,6 @@
 # Story 2.5: Multi-Turn Conversation Support
 
-**Status:** review
+**Status:** done
 **Epic:** 2 — Conversational Climate Data Interface
 **Story Key:** 2-5-multi-turn-conversation-support
 **Created:** 2026-03-30
