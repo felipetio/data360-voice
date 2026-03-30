@@ -62,7 +62,7 @@ Or with the FastAPI mount:
 uv run uvicorn app.main:app --reload
 ```
 
-Persistence activates automatically when `DATABASE_URL` is set. The Chainlit sidebar will
+The app requires a valid `DATABASE_URL` to start. With a working database connection, the Chainlit sidebar will
 show previous conversations, and users can click "New Chat" to start a fresh thread.
 
 ---

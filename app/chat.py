@@ -8,6 +8,7 @@ import chainlit as cl
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
+import app.data  # noqa: F401  # registers Chainlit data layer
 from app.config import settings
 from app.prompts import SYSTEM_PROMPT
 
@@ -119,7 +120,14 @@ async def on_chat_resume(thread: dict) -> None:
     history = history[-max_msgs:]
     cl.user_session.set("history", history)
 
-    # Re-connect the MCP session (same pattern as on_chat_start)
+    # Close any existing MCP stack before reconnecting (prevents connection leaks)
+    existing_stack = cl.user_session.get(_MCP_EXIT_STACK_KEY)
+    if existing_stack:
+        try:
+            await existing_stack.aclose()
+        except Exception:
+            logger.warning("Failed to close existing MCP stack on resume", exc_info=True)
+
     cl.user_session.set(_MCP_SESSION_KEY, None)
     cl.user_session.set(_MCP_TOOLS_KEY, [])
     cl.user_session.set(_MCP_EXIT_STACK_KEY, None)

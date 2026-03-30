@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS steps (
     "language" TEXT,
     "indent" INT,
     "defaultOpen" BOOLEAN,
+    "autoCollapse" BOOLEAN,
     FOREIGN KEY ("threadId") REFERENCES threads("id") ON DELETE CASCADE
 );
 
