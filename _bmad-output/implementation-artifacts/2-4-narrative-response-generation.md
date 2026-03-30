@@ -1,6 +1,6 @@
 # Story 2.4: Narrative Response Generation
 
-Status: review
+Status: done
 
 ## Story
 
