@@ -1380,3 +1380,66 @@ class TestMcpAutoConnect:
 
             # Should not raise
             await reload_chat.on_chat_end()
+
+
+class TestMultiTurnConversation:
+    """AC1/AC2: System prompt instructs multi-turn context resolution."""
+
+    def test_system_prompt_instructs_coreference_resolution(self):
+        """AC1: Prompt must instruct resolving pronouns from previous turn context."""
+        from app.prompts import SYSTEM_PROMPT
+
+        assert any(
+            phrase in SYSTEM_PROMPT.lower() for phrase in ["follow-up", "pronoun", "previous", "context", "infer"]
+        )
+
+    def test_system_prompt_instructs_no_unnecessary_clarification(self):
+        """AC1: When context is unambiguous, Claude must not ask for clarification."""
+        from app.prompts import SYSTEM_PROMPT
+
+        assert "clarif" in SYSTEM_PROMPT.lower() or "unambiguous" in SYSTEM_PROMPT.lower()
+
+    def test_system_prompt_instructs_indicator_reuse_on_comparison(self):
+        """AC1: On country comparison follow-up, reuse the same indicator."""
+        from app.prompts import SYSTEM_PROMPT
+
+        assert any(
+            phrase in SYSTEM_PROMPT.lower() for phrase in ["reuse", "same indicator", "previous turn", "comparison"]
+        )
+
+    async def test_multi_turn_history_passed_to_claude(self, reload_chat):
+        """AC2: Full conversation history (2+ turns) is sent to Claude on follow-up."""
+        import copy
+
+        tokens = ["Here is the comparison."]
+        msg_mock = _make_fake_cl_message()
+        captured_messages = []
+
+        def fake_stream(**kwargs):
+            captured_messages.extend(copy.deepcopy(kwargs.get("messages", [])))
+            return FakeStream(tokens)
+
+        existing_history = [
+            {"role": "user", "content": "What are CO2 emissions in Brazil?"},
+            {"role": "assistant", "content": "Brazil's CO2 emissions are 500Mt. (Source: WDI, 2022)"},
+        ]
+
+        with (
+            patch("app.chat.cl.Message", return_value=msg_mock),
+            patch("app.chat.cl.user_session") as session_mock,
+            patch("app.chat.client.messages.stream", side_effect=fake_stream),
+        ):
+            session_mock.get.return_value = existing_history.copy()
+            session_mock.set = MagicMock()
+
+            incoming = MagicMock()
+            incoming.content = "How does that compare to Argentina?"
+
+            await reload_chat.on_message(incoming)
+
+        # History must include prior turns plus the new follow-up user message
+        assert len(captured_messages) >= 3
+        assert captured_messages[-1]["content"] == "How does that compare to Argentina?"
+        # Prior assistant turn must be included
+        roles = [m["role"] for m in captured_messages]
+        assert "assistant" in roles
