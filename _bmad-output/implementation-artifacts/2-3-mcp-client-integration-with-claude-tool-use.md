@@ -1,6 +1,6 @@
 # Story 2.3: MCP Client Integration with Claude Tool Use
 
-Status: review
+Status: done
 
 ## Story
 
