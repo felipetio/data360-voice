@@ -1,6 +1,6 @@
 # Story 2.4: Narrative Response Generation
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -20,26 +20,26 @@ so that I can understand and use the data without interpreting raw numbers mysel
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Upgrade system prompt for narrative generation** (AC: #1, #2, #3, #4)
-  - [ ] Rewrite `SYSTEM_PROMPT` in `app/prompts.py` to include explicit narrative instructions:
+- [x] **Task 1: Upgrade system prompt for narrative generation** (AC: #1, #2, #3, #4)
+  - [x] Rewrite `SYSTEM_PROMPT` in `app/prompts.py` to include explicit narrative instructions:
     - Describe values in plain language (avoid raw tables by default)
     - Identify and verbally describe trend direction (rising/falling/stable/accelerating/decelerating) from time-series `TIME_PERIOD` + `OBS_VALUE` sequences
     - Compare multiple countries in a single flowing narrative when multi-country data is returned
     - Flag missing years explicitly when gaps are detected in the `TIME_PERIOD` sequence
     - Respond with "No relevant data found" + suggestions when tools return empty `data: []`
-  - [ ] Keep all existing grounding constraints intact (no causal claims, no forecasts, no external knowledge)
-  - [ ] Update citation instruction: always include `CITATION_SOURCE` field value and data year range
-  - [ ] Commit: `feat(prompts): upgrade system prompt for narrative response generation`
+  - [x] Keep all existing grounding constraints intact (no causal claims, no forecasts, no external knowledge)
+  - [x] Update citation instruction: always include `CITATION_SOURCE` field value and data year range
+  - [x] Commit: `feat(prompts): upgrade system prompt for narrative response generation`
 
-- [ ] **Task 2: Add narrative-focused integration tests** (AC: #1, #2, #3, #4)
-  - [ ] Add `TestNarrativeGeneration` class in `tests/app/test_chat.py`
-  - [ ] Test: single-country time-series query → system prompt instructs trend narration
-  - [ ] Test: multi-country query → system prompt instructs comparison narration
-  - [ ] Test: tool returns empty `data: []` → system prompt instructs "no data found" response
-  - [ ] Test: system prompt includes all grounding constraints (no causal claims, no forecasts)
-  - [ ] Test: system prompt instructs citation with `CITATION_SOURCE` and year range
-  - [ ] All 154+ tests pass
-  - [ ] Commit: `test(prompts): narrative generation system prompt tests`
+- [x] **Task 2: Add narrative-focused integration tests** (AC: #1, #2, #3, #4)
+  - [x] Add `TestNarrativeGeneration` class in `tests/app/test_chat.py`
+  - [x] Test: single-country time-series query → system prompt instructs trend narration
+  - [x] Test: multi-country query → system prompt instructs comparison narration
+  - [x] Test: tool returns empty `data: []` → system prompt instructs "no data found" response
+  - [x] Test: system prompt includes all grounding constraints (no causal claims, no forecasts)
+  - [x] Test: system prompt instructs citation with `CITATION_SOURCE` and year range
+  - [x] All 154+ tests pass
+  - [x] Commit: `test(prompts): narrative generation system prompt tests`
 
 ## Dev Notes
 
@@ -116,7 +116,7 @@ tests/
 
 ### Agent Model Used
 
-_to be filled by dev agent_
+claude-sonnet-4-6
 
 ### Debug Log References
 
@@ -124,8 +124,11 @@ _none_
 
 ### Completion Notes List
 
-_to be filled by dev agent_
+- Task 1: Extended SYSTEM_PROMPT in app/prompts.py with narrative generation instructions. Added sections for: trend narration (TIME_PERIOD/OBS_VALUE sequences), multi-country comparison (REF_AREA), gap flagging (missing years), no-data-found response, and CITATION_SOURCE citation format. All existing grounding constraints preserved.
+- Task 2: Added TestNarrativeGeneration class in tests/app/test_chat.py with 6 tests covering all ACs. All 160 tests pass (no regressions).
+- Code review: clean, no patch findings.
 
 ### File List
 
-_to be filled by dev agent_
+- app/prompts.py (modified)
+- tests/app/test_chat.py (modified)
