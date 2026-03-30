@@ -100,6 +100,47 @@ def _extract_tool_result_text(call_result) -> str:
 # ---------------------------------------------------------------------------
 
 
+@cl.on_chat_resume
+async def on_chat_resume(thread: dict) -> None:
+    """Restore conversation history when a user resumes a previous thread."""
+    history: list[dict[str, Any]] = []
+    steps = thread.get("steps", [])
+    for step in steps:
+        step_type = step.get("type", "")
+        output = step.get("output", "")
+        if not output:
+            continue
+        if step_type == "user_message":
+            history.append({"role": "user", "content": output})
+        elif step_type == "assistant_message":
+            history.append({"role": "assistant", "content": output})
+    # Trim to the configured history limit
+    max_msgs = settings.conversation_history_limit
+    history = history[-max_msgs:]
+    cl.user_session.set("history", history)
+
+    # Re-connect the MCP session (same pattern as on_chat_start)
+    cl.user_session.set(_MCP_SESSION_KEY, None)
+    cl.user_session.set(_MCP_TOOLS_KEY, [])
+    cl.user_session.set(_MCP_EXIT_STACK_KEY, None)
+
+    stack = AsyncExitStack()
+    try:
+        read, write, _ = await stack.enter_async_context(streamablehttp_client(url=settings.mcp_server_url))
+        session = await stack.enter_async_context(ClientSession(read, write))
+        await session.initialize()
+        result = await session.list_tools()
+        tools = _mcp_tools_to_anthropic(result.tools)
+
+        cl.user_session.set(_MCP_SESSION_KEY, session)
+        cl.user_session.set(_MCP_TOOLS_KEY, tools)
+        cl.user_session.set(_MCP_EXIT_STACK_KEY, stack)
+        logger.info("MCP reconnected on resume: %d tools available", len(tools))
+    except Exception:
+        logger.warning("MCP reconnect failed on resume, continuing without tools", exc_info=True)
+        await stack.aclose()
+
+
 @cl.on_chat_start
 async def on_chat_start():
     cl.user_session.set("history", [])
