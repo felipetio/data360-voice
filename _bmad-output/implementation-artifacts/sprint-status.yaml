@@ -60,7 +60,7 @@ development_status:
   2-3-mcp-client-integration-with-claude-tool-use: done
   2-4-narrative-response-generation: done
   2-5-multi-turn-conversation-support: done
-  2-6-conversation-persistence-and-history: backlog
+  2-6-conversation-persistence-and-history: review
   epic-2-retrospective: optional
 
   # Epic 3: Trust, Citations & LLM Grounding

@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from contextlib import AsyncExitStack
 from typing import Any
 
@@ -8,8 +9,31 @@ import chainlit as cl
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
+import app.data  # noqa: F401  # registers Chainlit data layer
 from app.config import settings
 from app.prompts import SYSTEM_PROMPT
+
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
+
+# Demo credentials — override via env vars for non-default setups.
+# Defaults: demo / demo (suitable for local development only).
+_AUTH_USERNAME = os.getenv("CHAINLIT_DEMO_USERNAME", "demo")
+_AUTH_PASSWORD = os.getenv("CHAINLIT_DEMO_PASSWORD", "demo")
+
+
+@cl.password_auth_callback
+def auth_callback(username: str, password: str):
+    """Password auth using credentials from env vars (CHAINLIT_DEMO_USERNAME / CHAINLIT_DEMO_PASSWORD).
+
+    Defaults to demo/demo for local development.
+    Set these env vars to change credentials without modifying code.
+    """
+    if username == _AUTH_USERNAME and password == _AUTH_PASSWORD:
+        return cl.User(identifier=username, metadata={"role": "user"})
+    return None
+
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +122,54 @@ def _extract_tool_result_text(call_result) -> str:
 # ---------------------------------------------------------------------------
 # Chainlit handlers
 # ---------------------------------------------------------------------------
+
+
+@cl.on_chat_resume
+async def on_chat_resume(thread: dict) -> None:
+    """Restore conversation history when a user resumes a previous thread."""
+    history: list[dict[str, Any]] = []
+    steps = thread.get("steps", [])
+    for step in steps:
+        step_type = step.get("type", "")
+        output = step.get("output", "")
+        if not output:
+            continue
+        if step_type == "user_message":
+            history.append({"role": "user", "content": output})
+        elif step_type == "assistant_message":
+            history.append({"role": "assistant", "content": output})
+    # Trim to the configured history limit
+    max_msgs = settings.conversation_history_limit
+    history = history[-max_msgs:]
+    cl.user_session.set("history", history)
+
+    # Close any existing MCP stack before reconnecting (prevents connection leaks)
+    existing_stack = cl.user_session.get(_MCP_EXIT_STACK_KEY)
+    if existing_stack:
+        try:
+            await existing_stack.aclose()
+        except Exception:
+            logger.warning("Failed to close existing MCP stack on resume", exc_info=True)
+
+    cl.user_session.set(_MCP_SESSION_KEY, None)
+    cl.user_session.set(_MCP_TOOLS_KEY, [])
+    cl.user_session.set(_MCP_EXIT_STACK_KEY, None)
+
+    stack = AsyncExitStack()
+    try:
+        read, write, _ = await stack.enter_async_context(streamablehttp_client(url=settings.mcp_server_url))
+        session = await stack.enter_async_context(ClientSession(read, write))
+        await session.initialize()
+        result = await session.list_tools()
+        tools = _mcp_tools_to_anthropic(result.tools)
+
+        cl.user_session.set(_MCP_SESSION_KEY, session)
+        cl.user_session.set(_MCP_TOOLS_KEY, tools)
+        cl.user_session.set(_MCP_EXIT_STACK_KEY, stack)
+        logger.info("MCP reconnected on resume: %d tools available", len(tools))
+    except Exception:
+        logger.warning("MCP reconnect failed on resume, continuing without tools", exc_info=True)
+        await stack.aclose()
 
 
 @cl.on_chat_start

@@ -11,6 +11,8 @@ def set_required_env_vars(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     monkeypatch.setenv("DATABASE_URL", "postgresql://user:password@localhost:5432/testdb")
     monkeypatch.setenv("MCP_SERVER_URL", "http://localhost:8001")
+    # Required by Chainlit's ensure_jwt_secret() when password_auth_callback is registered
+    monkeypatch.setenv("CHAINLIT_AUTH_SECRET", "test-secret-for-ci-do-not-use-in-prod")
 
 
 def test_fastapi_app_imports_without_error():

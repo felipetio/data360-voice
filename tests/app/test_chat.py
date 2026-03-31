@@ -1443,3 +1443,220 @@ class TestMultiTurnConversation:
         # Prior assistant turn must be included
         roles = [m["role"] for m in captured_messages]
         assert "assistant" in roles
+
+
+class TestConversationResume:
+    """Tests for on_chat_resume handler (AC1, AC2)."""
+
+    async def test_on_chat_resume_restores_user_and_assistant_history(self, reload_chat):
+        """Test 1: on_chat_resume restores user/assistant history from thread steps."""
+        thread = {
+            "steps": [
+                {"type": "user_message", "output": "What is the GDP of Brazil?"},
+                {"type": "assistant_message", "output": "Brazil's GDP is high."},
+                {"type": "user_message", "output": "And Argentina?"},
+                {"type": "assistant_message", "output": "Argentina's GDP is moderate."},
+            ]
+        }
+
+        stored = {}
+
+        @contextlib.asynccontextmanager
+        async def fake_mcp_client(url, **kwargs):
+            raise ConnectionError("MCP not available")
+            yield  # pragma: no cover
+
+        with (
+            patch("app.chat.streamablehttp_client", fake_mcp_client),
+            patch("app.chat.cl.user_session") as session_mock,
+        ):
+            session_mock.set.side_effect = lambda k, v: stored.update({k: v})
+            await reload_chat.on_chat_resume(thread)
+
+        history = stored.get("history", [])
+        assert len(history) == 4
+        assert history[0] == {"role": "user", "content": "What is the GDP of Brazil?"}
+        assert history[1] == {"role": "assistant", "content": "Brazil's GDP is high."}
+        assert history[2] == {"role": "user", "content": "And Argentina?"}
+        assert history[3] == {"role": "assistant", "content": "Argentina's GDP is moderate."}
+
+    async def test_on_chat_resume_filters_steps_with_no_output(self, reload_chat):
+        """Test 2: on_chat_resume filters out steps with no output (tool steps, empty steps)."""
+        thread = {
+            "steps": [
+                {"type": "user_message", "output": "Hello"},
+                {"type": "tool", "output": ""},  # empty output — should be skipped
+                {"type": "tool", "output": None},  # None output — should be skipped
+                {"type": "assistant_message", "output": ""},  # empty — should be skipped
+                {"type": "assistant_message", "output": "World!"},
+            ]
+        }
+
+        stored = {}
+
+        @contextlib.asynccontextmanager
+        async def fake_mcp_client(url, **kwargs):
+            raise ConnectionError("MCP not available")
+            yield  # pragma: no cover
+
+        with (
+            patch("app.chat.streamablehttp_client", fake_mcp_client),
+            patch("app.chat.cl.user_session") as session_mock,
+        ):
+            session_mock.set.side_effect = lambda k, v: stored.update({k: v})
+            await reload_chat.on_chat_resume(thread)
+
+        history = stored.get("history", [])
+        assert len(history) == 2
+        assert history[0] == {"role": "user", "content": "Hello"}
+        assert history[1] == {"role": "assistant", "content": "World!"}
+
+    async def test_on_chat_resume_trims_history_to_limit(self, reload_chat):
+        """Test 3: on_chat_resume trims history to CONVERSATION_HISTORY_LIMIT."""
+        # Create 20 steps (10 user + 10 assistant)
+        steps = []
+        for i in range(10):
+            steps.append({"type": "user_message", "output": f"User message {i}"})
+            steps.append({"type": "assistant_message", "output": f"Assistant message {i}"})
+
+        thread = {"steps": steps}
+        stored = {}
+
+        @contextlib.asynccontextmanager
+        async def fake_mcp_client(url, **kwargs):
+            raise ConnectionError("MCP not available")
+            yield  # pragma: no cover
+
+        with (
+            patch("app.chat.streamablehttp_client", fake_mcp_client),
+            patch("app.chat.cl.user_session") as session_mock,
+            patch("app.chat.settings") as settings_mock,
+        ):
+            settings_mock.conversation_history_limit = 4
+            settings_mock.mcp_server_url = "http://localhost:8001"
+            session_mock.set.side_effect = lambda k, v: stored.update({k: v})
+            await reload_chat.on_chat_resume(thread)
+
+        history = stored.get("history", [])
+        assert len(history) == 4
+        # Should keep the last 4 messages
+        assert history[0]["content"] == "User message 8"
+        assert history[1]["content"] == "Assistant message 8"
+        assert history[2]["content"] == "User message 9"
+        assert history[3]["content"] == "Assistant message 9"
+
+    async def test_on_chat_resume_with_empty_steps_results_in_empty_history(self, reload_chat):
+        """Test 4: on_chat_resume with empty steps results in empty history."""
+        thread = {"steps": []}
+        stored = {}
+
+        @contextlib.asynccontextmanager
+        async def fake_mcp_client(url, **kwargs):
+            raise ConnectionError("MCP not available")
+            yield  # pragma: no cover
+
+        with (
+            patch("app.chat.streamablehttp_client", fake_mcp_client),
+            patch("app.chat.cl.user_session") as session_mock,
+        ):
+            session_mock.set.side_effect = lambda k, v: stored.update({k: v})
+            await reload_chat.on_chat_resume(thread)
+
+        history = stored.get("history", [])
+        assert history == []
+
+    async def test_on_chat_resume_reconnects_mcp_session(self, reload_chat):
+        """Test 5: on_chat_resume reconnects MCP session successfully."""
+        thread = {"steps": []}
+        stored = {}
+
+        fake_tool = MagicMock()
+        fake_tool.name = "search_indicators"
+        fake_tool.description = "Search"
+        fake_tool.inputSchema = {"type": "object", "properties": {}}
+
+        fake_session = AsyncMock()
+        list_result = MagicMock()
+        list_result.tools = [fake_tool]
+        fake_session.list_tools = AsyncMock(return_value=list_result)
+        fake_session.initialize = AsyncMock()
+        fake_session.__aenter__ = AsyncMock(return_value=fake_session)
+        fake_session.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch("app.chat.streamablehttp_client", _fake_streamablehttp_client),
+            patch("app.chat.ClientSession", return_value=fake_session),
+            patch("app.chat.cl.user_session") as session_mock,
+        ):
+            session_mock.set.side_effect = lambda k, v: stored.update({k: v})
+            await reload_chat.on_chat_resume(thread)
+
+        assert stored.get("mcp_session") is fake_session
+        assert len(stored.get("mcp_tools", [])) == 1
+        assert stored["mcp_tools"][0]["name"] == "search_indicators"
+
+    async def test_on_chat_resume_handles_mcp_failure_gracefully(self, reload_chat):
+        """Test 5 (failure case): on_chat_resume handles MCP reconnect failure gracefully."""
+        thread = {"steps": [{"type": "user_message", "output": "Hello"}]}
+        stored = {}
+
+        @contextlib.asynccontextmanager
+        async def failing_client(url, **kwargs):
+            raise ConnectionError("MCP server not running")
+            yield  # pragma: no cover
+
+        with (
+            patch("app.chat.streamablehttp_client", failing_client),
+            patch("app.chat.cl.user_session") as session_mock,
+        ):
+            session_mock.set.side_effect = lambda k, v: stored.update({k: v})
+            # Should not raise
+            await reload_chat.on_chat_resume(thread)
+
+        # History should be restored even if MCP fails
+        history = stored.get("history", [])
+        assert len(history) == 1
+        assert history[0] == {"role": "user", "content": "Hello"}
+        # MCP session should be None
+        assert stored.get("mcp_session") is None
+
+    async def test_on_chat_resume_closes_existing_stack(self, reload_chat):
+        """Test 7: on_chat_resume acloses any existing AsyncExitStack before reconnecting."""
+        thread = {"steps": []}
+        stored = {}
+
+        existing_stack = AsyncMock()
+        existing_stack.aclose = AsyncMock()
+
+        with (
+            patch("app.chat.streamablehttp_client", _fake_streamablehttp_client),
+            patch("app.chat.ClientSession", return_value=AsyncMock()),
+            patch("app.chat.cl.user_session") as session_mock,
+        ):
+            session_mock.get.side_effect = lambda k, default=None: existing_stack if k == "mcp_exit_stack" else default
+            session_mock.set.side_effect = lambda k, v: stored.update({k: v})
+            await reload_chat.on_chat_resume(thread)
+
+        existing_stack.aclose.assert_awaited_once()
+
+    async def test_on_chat_resume_handles_existing_stack_aclose_failure(self, reload_chat):
+        """Test 8: on_chat_resume continues normally even if existing stack.aclose() raises."""
+        thread = {"steps": [{"type": "user_message", "output": "Hi"}]}
+        stored = {}
+
+        failing_stack = AsyncMock()
+        failing_stack.aclose = AsyncMock(side_effect=RuntimeError("already closed"))
+
+        with (
+            patch("app.chat.streamablehttp_client", _fake_streamablehttp_client),
+            patch("app.chat.ClientSession", return_value=AsyncMock()),
+            patch("app.chat.cl.user_session") as session_mock,
+        ):
+            session_mock.get.side_effect = lambda k, default=None: failing_stack if k == "mcp_exit_stack" else default
+            session_mock.set.side_effect = lambda k, v: stored.update({k: v})
+            # Must not raise despite aclose() failure
+            await reload_chat.on_chat_resume(thread)
+
+        failing_stack.aclose.assert_awaited_once()
+        history = stored.get("history", [])
+        assert history[0] == {"role": "user", "content": "Hi"}
