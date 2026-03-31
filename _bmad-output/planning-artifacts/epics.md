@@ -996,11 +996,12 @@ So that I can find relevant context from local sources alongside World Bank data
 
 **Given** the MCP server is running with `DATA360_RAG_ENABLED=true`
 **When** a user calls `search_documents(query="drought northeast Brazil", limit=5, min_score=0.3)`
-**Then** the tool generates an embedding for the query and searches pgvector by cosine similarity
-**And** returns chunks ranked by similarity score, filtered by `min_score`
+**Then** the tool generates an embedding for the query and searches pgvector using the `<=>` cosine distance operator
+**And** converts distance to similarity score (`similarity = 1 - distance`, higher is better)
+**And** returns chunks ranked by descending similarity score, filtered by `min_score` (`similarity >= min_score`)
 **And** response format: `{"success": True, "data": [...], "total_count": N, "returned_count": N, "truncated": False}`
-**And** each result includes: `content`, `source` (filename), `page_number`, `similarity_score`, `CITATION_SOURCE`
-**And** `CITATION_SOURCE` follows the pattern: `"{filename} (uploaded {date}), p. {page}"`
+**And** each result includes: `content`, `source` (filename), `page_number` (or null for non-paginated formats), `similarity_score`, `CITATION_SOURCE`
+**And** `CITATION_SOURCE` follows format-specific patterns: PDFs use `"{filename} (uploaded {date}), p. {page}"`, TXT/MD use `"..., chunk {chunk_index}"`, CSV uses `"..., rows {start}-{end}"`
 
 **Given** the MCP server is running with `DATA360_RAG_ENABLED=true`
 **When** a user calls `list_documents(limit=20)`

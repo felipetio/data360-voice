@@ -133,7 +133,7 @@ Add:
 | `DATA360_RAG_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence-transformers model |
 | `DATA360_RAG_CHUNK_SIZE` | `512` | Chunk size in tokens |
 | `DATA360_RAG_CHUNK_OVERLAP` | `64` | Chunk overlap in tokens |
-| `DATA360_RAG_MIN_SCORE` | `0.3` | Minimum similarity score |
+| `DATA360_RAG_MIN_SCORE` | `0.3` | Minimum similarity score (computed as `1 - cosine_distance`) |
 
 ### 4.2 Architecture Changes
 

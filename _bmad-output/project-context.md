@@ -109,7 +109,7 @@ All tools MUST return one of exactly two shapes:
 - Embedding model loaded once at startup via singleton pattern (same approach as `_db_name_cache`)
 - Document citations use `CITATION_SOURCE` field following existing pattern: `"{filename} (uploaded {date}), p. {page}"`
 - Never store raw file content in pgvector, only chunked text + embeddings
-- Vector similarity uses cosine distance with pgvector `<=>` operator
+- Vector search uses pgvector `<=>` cosine distance operator (lower = more similar); convert to similarity score (`1 - distance`) before applying `min_score` thresholds
 - All RAG config via `DATA360_RAG_*` env vars in `config.py`, no hardcoded values
 - RAG module lives in `mcp_server/rag/` (embeddings.py, chunker.py, store.py, processor.py)
 

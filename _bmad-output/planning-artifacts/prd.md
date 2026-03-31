@@ -445,7 +445,7 @@ Data360 Voice is a single-page web application built on Chainlit (mounted in Fas
 - FR52: The MCP server can search uploaded documents via vector similarity (search_documents tool)
 - FR53: The MCP server can list all uploaded documents with metadata (list_documents tool)
 - FR54: The system can cross-reference Data360 API quantitative data with uploaded document context in a single response
-- FR55: Document-sourced citations follow the CITATION_SOURCE pattern (e.g., "CEMADEM Report (uploaded 2026-03-30), p. 12")
+- FR55: Document-sourced citations follow format-specific CITATION_SOURCE patterns: PDFs use page numbers (e.g., "CEMADEM Report (uploaded 2026-03-30), p. 12"), TXT/MD use chunk indices (e.g., "..., chunk 3"), CSV uses row ranges (e.g., "..., rows 120-135")
 - FR56: RAG functionality is gated behind DATA360_RAG_ENABLED env var (default: false)
 
 ## Non-Functional Requirements
@@ -486,4 +486,4 @@ Performance targets are defined in the Web Application Specific Requirements sec
 | `DATA360_RAG_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence-transformers model |
 | `DATA360_RAG_CHUNK_SIZE` | `512` | Chunk size in tokens |
 | `DATA360_RAG_CHUNK_OVERLAP` | `64` | Chunk overlap in tokens |
-| `DATA360_RAG_MIN_SCORE` | `0.3` | Minimum similarity score for search results |
+| `DATA360_RAG_MIN_SCORE` | `0.3` | Minimum similarity score (computed as `1 - cosine_distance`) for search results |

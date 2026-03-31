@@ -188,7 +188,7 @@ data360-voice/
 | `search_documents` | - | pgvector (local) | `query` | `limit`, `min_score` |
 | `list_documents` | - | pgvector (local) | - | `limit` |
 
-**Note:** `search_documents` and `list_documents` query the local pgvector database, not the Data360 API. Only registered when `DATA360_RAG_ENABLED=true`.
+**Note:** `search_documents` and `list_documents` query the local pgvector database, not the Data360 API. Only registered when `DATA360_RAG_ENABLED=true`. `min_score` is a similarity threshold in `[0, 1]` (higher = more similar); implementations convert pgvector cosine distance to similarity via `1 - distance` before filtering.
 
 **Tool Signatures:**
 

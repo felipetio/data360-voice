@@ -39,7 +39,7 @@ Data360 Voice é uma interface conversacional para dados climáticos do Banco Mu
 3. **Cita cada ponto de dado** com atribuição completa de fonte do Banco Mundial (campos DATA_SOURCE extraídos diretamente da API), para que jornalistas possam citar com confiança
 4. **Mostra a atualidade dos dados** exibindo o ano mais recente disponível, com avisos claros quando os dados têm mais de 2 anos
 5. **Permite verificação de afirmações** onde o usuário pode colar uma afirmação climática e receber um veredito baseado em dados oficiais
-6. **Cruza dados oficiais com dados do usuário** permitindo upload de datapoints manuais e/ou documentos (CSV, PDF, relatórios) para análise comparativa contra os indicadores do Banco Mundial
+6. **Cruza dados oficiais com documentos do usuário** permitindo upload de arquivos (CSV, PDF, TXT, MD) para busca semântica e análise comparativa contra os indicadores do Banco Mundial
 7. **Suporta diálogo de acompanhamento** para que usuários possam refinar, comparar e explorar mais fundo
 
 Quando nenhum indicador relevante é encontrado, o sistema diz isso de forma transparente, porque um "não tenho dados para isso" confiável é mais valioso que uma resposta errada com confiança.
@@ -75,7 +75,7 @@ Quando nenhum indicador relevante é encontrado, o sistema diz isso de forma tra
 - **Dados oficiais, acesso conversacional.** Não é mais um chatbot que inventa números. O LLM é restrito a narrar apenas o que a API retornou, com atribuição de fonte determinística.
 - **Verificação de fatos integrada.** Usuários podem colar afirmações climáticas e receber vereditos baseados em dados oficiais do Banco Mundial, restaurando confiança na informação.
 - **Narrativas, não dashboards.** A saída não é um gráfico que você precisa interpretar. É um parágrafo com fontes que você pode colocar numa matéria, num briefing ou numa apresentação.
-- **Cruzamento de dados oficiais com dados do usuário.** Upload de datapoints (CSV, planilhas) e documentos (PDF, relatórios) permite análise comparativa contra indicadores oficiais do Banco Mundial, sempre diferenciando claramente a origem de cada dado na resposta.
+- **Cruzamento de dados oficiais com documentos do usuário.** Upload de arquivos (PDF, CSV, TXT, MD) permite busca semântica e análise comparativa contra indicadores oficiais do Banco Mundial, sempre diferenciando claramente a origem de cada dado na resposta.
 - **Busca vetorial faz o trabalho pesado.** A busca semântica da API Data360 (`/searchv2`) mapeia linguagem natural para os indicadores certos automaticamente, sem necessidade de conhecer códigos ou navegar taxonomias.
 - **300M+ pontos de dados como diferencial.** A plataforma Data360 do Banco Mundial cobre 200+ economias e 10.000+ indicadores. Isso não é uma fonte de dados, é um ativo que nenhum concorrente pode replicar sem o mesmo acesso institucional.
 - **Construído por quem sente a dor.** Gustavo (co-fundador, jornalista) navegou esses desafios de acesso a dados profissionalmente. Isso não são engenheiros adivinhando as necessidades de jornalistas.
@@ -115,7 +115,7 @@ Estudantes, ativistas e cidadãos engajados preparando apresentações, verifica
 - Gráficos simples de série temporal inline (tipo único de visualização)
 - Persistência de conversas
 - Respostas transparentes de "dados não encontrados"
-- Upload de datapoints (CSV, planilhas) e documentos (PDF, relatórios) para cruzamento com dados oficiais
+- Upload de arquivos (PDF, CSV, TXT, MD) com busca semântica para cruzamento com dados oficiais
 - Diferenciação clara de origem dos dados nas respostas (oficial vs. usuário)
 
 ### Fora do Escopo (Pós-MVP)
