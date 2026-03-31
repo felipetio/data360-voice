@@ -9,11 +9,10 @@ dependencies = [
     "chainlit>=2.10.0",
     "fastapi>=0.100.0",
     "fastmcp>=3.1.1",
-    "greenlet>=3.0.0",
     "httpx>=0.28.1",
     "pydantic-settings>=2.0.0",
     "python-dotenv>=1.2.2",
-    "SQLAlchemy>=2.0.0",
+    "sqlalchemy[asyncio]>=2.0.0",
 ]
 
 [dependency-groups]

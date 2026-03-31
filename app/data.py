@@ -11,6 +11,6 @@ def get_data_layer():
     """Register SQLAlchemy data layer for conversation persistence."""
     conninfo = settings.database_url
     # SQLAlchemy requires +asyncpg in the protocol for async support
-    if conninfo and "postgresql://" in conninfo and "+asyncpg" not in conninfo:
-        conninfo = conninfo.replace("postgresql://", "postgresql+asyncpg://")
+    if conninfo and conninfo.startswith("postgresql://") and "+asyncpg" not in conninfo:
+        conninfo = conninfo.replace("postgresql://", "postgresql+asyncpg://", 1)
     return SQLAlchemyDataLayer(conninfo=conninfo)

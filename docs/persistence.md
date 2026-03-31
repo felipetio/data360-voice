@@ -50,7 +50,29 @@ Match the credentials to what's in `docker-compose.yml` (defaults: `user` / `pas
 > **Note:** The `+asyncpg` protocol conversion (`postgresql://` → `postgresql+asyncpg://`) is handled
 > automatically by `app/data.py`. You do not need to add `+asyncpg` to your `.env` file.
 
-### Step 3: Restart the app
+### Step 3: Set `CHAINLIT_AUTH_SECRET` in your shell
+
+Chainlit requires a JWT secret to be present in the environment when authentication is enabled.
+This must be set as a **shell environment variable** (Chainlit does not read it from `.env`):
+
+```bash
+export CHAINLIT_AUTH_SECRET=your-secret-here
+```
+
+For production, generate a strong secret:
+
+```bash
+export CHAINLIT_AUTH_SECRET=$(openssl rand -hex 32)
+```
+
+Default login credentials are `demo` / `demo`. Override via:
+
+```bash
+export CHAINLIT_DEMO_USERNAME=yourname
+export CHAINLIT_DEMO_PASSWORD=yourpassword
+```
+
+### Step 4: Restart the app
 
 ```bash
 uv run chainlit run app/chat.py
@@ -80,7 +102,7 @@ def get_data_layer():
     return SQLAlchemyDataLayer(conninfo=conninfo)
 ```
 
-This is imported in `app/main.py` to ensure registration at startup.
+This registration happens when `app/data.py` is imported — either via `app/main.py` when running with the FastAPI mount, or via `app/chat.py` when running `chainlit` directly (since `app/chat.py` imports `app.data`).
 
 Chainlit automatically:
 1. Creates a `threads` row for each new conversation

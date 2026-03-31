@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from contextlib import AsyncExitStack
 from typing import Any
 
@@ -16,12 +17,21 @@ from app.prompts import SYSTEM_PROMPT
 # Authentication
 # ---------------------------------------------------------------------------
 
+# Demo credentials — override via env vars for non-default setups.
+# Defaults: demo / demo (suitable for local development only).
+_AUTH_USERNAME = os.getenv("CHAINLIT_DEMO_USERNAME", "demo")
+_AUTH_PASSWORD = os.getenv("CHAINLIT_DEMO_PASSWORD", "demo")
+
 
 @cl.password_auth_callback
 def auth_callback(username: str, password: str):
-    """Simple demo auth — single hardcoded user for local development."""
-    if username == "demo" and password == "demo":
-        return cl.User(identifier="demo", metadata={"role": "user"})
+    """Password auth using credentials from env vars (CHAINLIT_DEMO_USERNAME / CHAINLIT_DEMO_PASSWORD).
+
+    Defaults to demo/demo for local development.
+    Set these env vars to change credentials without modifying code.
+    """
+    if username == _AUTH_USERNAME and password == _AUTH_PASSWORD:
+        return cl.User(identifier=username, metadata={"role": "user"})
     return None
 
 

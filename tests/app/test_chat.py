@@ -1619,3 +1619,44 @@ class TestConversationResume:
         assert history[0] == {"role": "user", "content": "Hello"}
         # MCP session should be None
         assert stored.get("mcp_session") is None
+
+    async def test_on_chat_resume_closes_existing_stack(self, reload_chat):
+        """Test 7: on_chat_resume acloses any existing AsyncExitStack before reconnecting."""
+        thread = {"steps": []}
+        stored = {}
+
+        existing_stack = AsyncMock()
+        existing_stack.aclose = AsyncMock()
+
+        with (
+            patch("app.chat.streamablehttp_client", _fake_streamablehttp_client),
+            patch("app.chat.ClientSession", return_value=AsyncMock()),
+            patch("app.chat.cl.user_session") as session_mock,
+        ):
+            session_mock.get.side_effect = lambda k, default=None: existing_stack if k == "mcp_exit_stack" else default
+            session_mock.set.side_effect = lambda k, v: stored.update({k: v})
+            await reload_chat.on_chat_resume(thread)
+
+        existing_stack.aclose.assert_awaited_once()
+
+    async def test_on_chat_resume_handles_existing_stack_aclose_failure(self, reload_chat):
+        """Test 8: on_chat_resume continues normally even if existing stack.aclose() raises."""
+        thread = {"steps": [{"type": "user_message", "output": "Hi"}]}
+        stored = {}
+
+        failing_stack = AsyncMock()
+        failing_stack.aclose = AsyncMock(side_effect=RuntimeError("already closed"))
+
+        with (
+            patch("app.chat.streamablehttp_client", _fake_streamablehttp_client),
+            patch("app.chat.ClientSession", return_value=AsyncMock()),
+            patch("app.chat.cl.user_session") as session_mock,
+        ):
+            session_mock.get.side_effect = lambda k, default=None: failing_stack if k == "mcp_exit_stack" else default
+            session_mock.set.side_effect = lambda k, v: stored.update({k: v})
+            # Must not raise despite aclose() failure
+            await reload_chat.on_chat_resume(thread)
+
+        failing_stack.aclose.assert_awaited_once()
+        history = stored.get("history", [])
+        assert history[0] == {"role": "user", "content": "Hi"}
