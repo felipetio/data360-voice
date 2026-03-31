@@ -39,7 +39,8 @@ Data360 Voice é uma interface conversacional para dados climáticos do Banco Mu
 3. **Cita cada ponto de dado** com atribuição completa de fonte do Banco Mundial (campos DATA_SOURCE extraídos diretamente da API), para que jornalistas possam citar com confiança
 4. **Mostra a atualidade dos dados** exibindo o ano mais recente disponível, com avisos claros quando os dados têm mais de 2 anos
 5. **Permite verificação de afirmações** onde o usuário pode colar uma afirmação climática e receber um veredito baseado em dados oficiais
-6. **Suporta diálogo de acompanhamento** para que usuários possam refinar, comparar e explorar mais fundo
+6. **Cruza dados oficiais com documentos do usuário** permitindo upload de arquivos (CSV, PDF, TXT, MD) para busca semântica e análise comparativa contra os indicadores do Banco Mundial
+7. **Suporta diálogo de acompanhamento** para que usuários possam refinar, comparar e explorar mais fundo
 
 Quando nenhum indicador relevante é encontrado, o sistema diz isso de forma transparente, porque um "não tenho dados para isso" confiável é mais valioso que uma resposta errada com confiança.
 
@@ -52,6 +53,14 @@ Quando nenhum indicador relevante é encontrado, o sistema diz isso de forma tra
 > **Usuário:** "Como isso se compara a outros países da América do Sul?"
 >
 > **Data360 Voice:** [gera análise comparativa com citações individuais por país]
+
+**Exemplo de cruzamento de dados:**
+
+> **Usuário:** [faz upload de CSV com dados de precipitação de estações meteorológicas locais do Ceará, 2018-2024]
+>
+> **Usuário:** "Como esses dados locais se comparam com os indicadores de seca do Banco Mundial para o Brasil?"
+>
+> **Data360 Voice:** "Seus dados mostram uma redução média de 31% na precipitação nas estações do Ceará entre 2018 e 2024. Segundo o Banco Mundial, o índice de seca nacional do Brasil aumentou 23% no mesmo período. A discrepância sugere que o Nordeste está sendo mais afetado que a média nacional... [Fonte dados oficiais: WB_WDI_EN_CLC_DRHT, World Bank Data360 | Dados do usuário: upload CSV, 12 estações]"
 
 **Exemplo de verificação de fato:**
 
@@ -66,6 +75,7 @@ Quando nenhum indicador relevante é encontrado, o sistema diz isso de forma tra
 - **Dados oficiais, acesso conversacional.** Não é mais um chatbot que inventa números. O LLM é restrito a narrar apenas o que a API retornou, com atribuição de fonte determinística.
 - **Verificação de fatos integrada.** Usuários podem colar afirmações climáticas e receber vereditos baseados em dados oficiais do Banco Mundial, restaurando confiança na informação.
 - **Narrativas, não dashboards.** A saída não é um gráfico que você precisa interpretar. É um parágrafo com fontes que você pode colocar numa matéria, num briefing ou numa apresentação.
+- **Cruzamento de dados oficiais com documentos do usuário.** Upload de arquivos (PDF, CSV, TXT, MD) permite busca semântica e análise comparativa contra indicadores oficiais do Banco Mundial, sempre diferenciando claramente a origem de cada dado na resposta.
 - **Busca vetorial faz o trabalho pesado.** A busca semântica da API Data360 (`/searchv2`) mapeia linguagem natural para os indicadores certos automaticamente, sem necessidade de conhecer códigos ou navegar taxonomias.
 - **300M+ pontos de dados como diferencial.** A plataforma Data360 do Banco Mundial cobre 200+ economias e 10.000+ indicadores. Isso não é uma fonte de dados, é um ativo que nenhum concorrente pode replicar sem o mesmo acesso institucional.
 - **Construído por quem sente a dor.** Gustavo (co-fundador, jornalista) navegou esses desafios de acesso a dados profissionalmente. Isso não são engenheiros adivinhando as necessidades de jornalistas.
@@ -105,11 +115,12 @@ Estudantes, ativistas e cidadãos engajados preparando apresentações, verifica
 - Gráficos simples de série temporal inline (tipo único de visualização)
 - Persistência de conversas
 - Respostas transparentes de "dados não encontrados"
+- Upload de arquivos (PDF, CSV, TXT, MD) com busca semântica para cruzamento com dados oficiais
+- Diferenciação clara de origem dos dados nas respostas (oficial vs. usuário)
 
 ### Fora do Escopo (Pós-MVP)
 
 - Dados sub-nacionais (municipal/regional), previsto para o futuro (ex: integração CEMADEM/CPTEC para o Brasil)
-- Upload de documentos / RAG (NDCs, relatórios nacionais)
 - Interface multi-idioma (Espanhol, Francês, Português planejados para alcance no Sul Global)
 - Cards de resposta compartilháveis e links de conversa (nice to have)
 - Dashboards customizados e visualizações avançadas
