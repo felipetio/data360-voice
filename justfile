@@ -2,9 +2,9 @@
 
 set dotenv-load
 
-# Ports
-mcp_port := env("MCP_PORT", "8001")
-app_port := env("APP_PORT", "8000")
+# Ports (loaded from .env via dotenv-load)
+mcp_port := env("MCP_PORT")
+app_port := env("APP_PORT")
 pid_dir  := ".pids"
 log_dir  := ".logs"
 
@@ -20,10 +20,27 @@ start svc="all":
 
     fmt() { printf "%s %-12s %s\n" "$1" "$2" "$3"; }
 
+    # Cross-platform: get PID listening on a port (Linux ss / macOS lsof)
+    pid_on_port() {
+        local port="$1"
+        if command -v ss > /dev/null 2>&1; then
+            ss -tlnp 2>/dev/null | grep ":${port} " | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -1
+        elif command -v lsof > /dev/null 2>&1; then
+            lsof -ti ":${port}" -sTCP:LISTEN 2>/dev/null | head -1
+        fi
+    }
+
+    # Check if a port is in use
+    port_in_use() {
+        local pid=$(pid_on_port "$1")
+        [ -n "$pid" ]
+    }
+
+    # Wait for a port to have a listener and return its PID
     resolve_pid() {
         local port="$1" max_wait="${2:-15}" i=0
         while [ $i -lt $max_wait ]; do
-            local pid=$(ss -tlnp 2>/dev/null | grep ":${port} " | grep -oP 'pid=\K[0-9]+' | head -1)
+            local pid=$(pid_on_port "$port")
             if [ -n "$pid" ]; then echo "$pid"; return 0; fi
             sleep 1; i=$((i + 1))
         done
@@ -45,9 +62,8 @@ start svc="all":
             fmt "⚡" "FastMCP" "already running (PID $(cat "$pidfile"))"; return
         fi
         rm -f "$pidfile"
-        if ss -tlnp 2>/dev/null | grep -q ":{{mcp_port}} "; then
-            fmt "⚡" "FastMCP" "❌ port {{mcp_port}} in use"
-            ss -tlnp | grep ":{{mcp_port}} " | sed 's/^/   /'
+        if port_in_use {{mcp_port}}; then
+            fmt "⚡" "FastMCP" "❌ port {{mcp_port}} in use (PID $(pid_on_port {{mcp_port}}))"
             echo "   Fix: just stop fastmcp"; exit 1
         fi
         fmt "⚡" "FastMCP" "starting..."
@@ -70,9 +86,8 @@ start svc="all":
             fmt "🌐" "Chainlit" "already running (PID $(cat "$pidfile"))"; return
         fi
         rm -f "$pidfile"
-        if ss -tlnp 2>/dev/null | grep -q ":{{app_port}} "; then
-            fmt "🌐" "Chainlit" "❌ port {{app_port}} in use"
-            ss -tlnp | grep ":{{app_port}} " | sed 's/^/   /'
+        if port_in_use {{app_port}}; then
+            fmt "🌐" "Chainlit" "❌ port {{app_port}} in use (PID $(pid_on_port {{app_port}}))"
             echo "   Fix: just stop chainlit"; exit 1
         fi
         fmt "🌐" "Chainlit" "starting..."
@@ -103,6 +118,16 @@ stop svc="all":
 
     fmt() { printf "%s %-12s %s\n" "$1" "$2" "$3"; }
 
+    # Cross-platform: get PID listening on a port (Linux ss / macOS lsof)
+    pid_on_port() {
+        local port="$1"
+        if command -v ss > /dev/null 2>&1; then
+            ss -tlnp 2>/dev/null | grep ":${port} " | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -1
+        elif command -v lsof > /dev/null 2>&1; then
+            lsof -ti ":${port}" -sTCP:LISTEN 2>/dev/null | head -1
+        fi
+    }
+
     kill_svc() {
         local pidfile="$1" icon="$2" label="$3" port="$4"
         local killed=false
@@ -119,7 +144,7 @@ stop svc="all":
             rm -f "$pidfile"
         fi
         if [ -n "$port" ]; then
-            local orphan=$(ss -tlnp 2>/dev/null | grep ":${port} " | grep -oP 'pid=\K[0-9]+' | head -1)
+            local orphan=$(pid_on_port "$port")
             if [ -n "$orphan" ]; then
                 kill "$orphan" 2>/dev/null || true
                 sleep 0.5
