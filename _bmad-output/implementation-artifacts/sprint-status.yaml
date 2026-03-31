@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-24
-last_updated: 2026-03-30
+last_updated: 2026-03-31
 project: bmad
 project_key: NOKEY
 tracking_system: file-system
@@ -54,14 +54,14 @@ development_status:
   epic-1-retrospective: done
 
   # Epic 2: Conversational Climate Data Interface
-  epic-2: in-progress
+  epic-2: done
   2-1-chainlit-fastapi-application-setup: done
   2-2-claude-api-integration-with-streaming: done
   2-3-mcp-client-integration-with-claude-tool-use: done
   2-4-narrative-response-generation: done
   2-5-multi-turn-conversation-support: done
-  2-6-conversation-persistence-and-history: review
-  epic-2-retrospective: optional
+  2-6-conversation-persistence-and-history: done
+  epic-2-retrospective: done
 
   # Epic 3: Trust, Citations & LLM Grounding
   epic-3: backlog

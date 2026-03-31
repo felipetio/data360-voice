@@ -28,7 +28,19 @@ Thumbs.db
 # Claude Code
 .claude/settings.local.json
 
+# BMad OpenClaw plugin state (not project source)
+_bmad/config.yaml
+_bmad/state.json
+
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Dev server runtime
+.pids/
+.logs/
+
+# Editor
+.user.justfile
+.logs/
