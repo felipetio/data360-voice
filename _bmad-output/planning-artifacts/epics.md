@@ -87,6 +87,17 @@ NFR12: The MCP server must be transport-agnostic, supporting both stdio and HTTP
 NFR13: Offline indicator search must return results in under 50ms (no network calls)
 NFR14: Popular indicators and metadata files must load into memory in under 500ms at server startup
 
+### Document Upload & RAG Search Requirements
+
+FR49: Users can upload PDF, TXT, MD, and CSV documents via the Chainlit chat interface
+FR50: The system can extract text from uploaded documents and split into chunks for vector search
+FR51: The system can generate embeddings for document chunks and store them in pgvector
+FR52: The MCP server can search uploaded documents via vector similarity (search_documents tool)
+FR53: The MCP server can list all uploaded documents with metadata (list_documents tool)
+FR54: The system can cross-reference Data360 API quantitative data with uploaded document context in a single response
+FR55: Document-sourced citations follow the CITATION_SOURCE pattern (e.g., "CEMADEM Report (uploaded 2026-03-30), p. 12")
+FR56: RAG functionality is gated behind DATA360_RAG_ENABLED env var (default: false)
+
 ### Additional Requirements
 
 - Manual project setup with uv (no starter template): `uv init data360-voice`, `uv add fastmcp chainlit fastapi uvicorn asyncpg anthropic httpx`
@@ -158,6 +169,14 @@ FR45: Epic 7 - country_profile MCP prompt
 FR46: Epic 7 - trend_analysis MCP prompt
 FR47: Epic 7 - MCP resources for indicator and database discovery
 FR48: Epic 7 - Workflow documentation resource
+FR49: Epic 8 - Document upload via Chainlit file attachment
+FR50: Epic 8 - Text extraction and chunking pipeline
+FR51: Epic 8 - Embedding generation and pgvector storage
+FR52: Epic 8 - search_documents MCP tool
+FR53: Epic 8 - list_documents MCP tool
+FR54: Epic 8 - Cross-referencing API + document data in responses
+FR55: Epic 8 - Document CITATION_SOURCE pattern
+FR56: Epic 8 - DATA360_RAG_ENABLED feature flag
 
 ## Epic List
 
@@ -194,6 +213,12 @@ Users can check which years have data for a given indicator before requesting da
 The MCP server provides guided workflow prompts and discoverable resources that help LLM clients execute common data analysis patterns with consistent quality and proper citations.
 **FRs covered:** FR44, FR45, FR46, FR47, FR48
 **NFRs addressed:** NFR12 (transport-agnostic)
+
+### Epic 8: Document Upload & RAG Search
+Users can upload documents (PDFs, reports from CEMADEM, CPTEC, NDCs) and search them via vector similarity, enabling cross-referencing of World Bank quantitative data with sub-national/qualitative document context. Feature-flagged via DATA360_RAG_ENABLED.
+**FRs covered:** FR49, FR50, FR51, FR52, FR53, FR54, FR55, FR56
+**NFRs addressed:** NFR8 (no PII), NFR9 (graceful failure)
+**Implementation order:** After Epic 2, before Epic 3 (so system prompt covers all data sources)
 
 ---
 
@@ -910,3 +935,182 @@ So that I can verify they render correctly and return expected content.
 **Then** it tests `data360://popular-indicators` returns valid JSON with indicator list
 **And** tests `data360://databases` returns all 4 databases
 **And** tests `data360://workflow` returns markdown with 3-step workflow
+
+---
+
+## Epic 8: Document Upload & RAG Search
+
+Users can upload documents (PDFs, reports from CEMADEM, CPTEC, NDCs) and search them via vector similarity, enabling cross-referencing of World Bank quantitative data with sub-national/qualitative document context. Feature-flagged via DATA360_RAG_ENABLED.
+
+**FRs covered:** FR49, FR50, FR51, FR52, FR53, FR54, FR55, FR56
+**NFRs addressed:** NFR8 (no PII), NFR9 (graceful failure)
+**Implementation order:** After Epic 2, before Epic 3
+
+### Story 8.1: pgvector Schema and Database Migration
+
+As a developer,
+I want the PostgreSQL database extended with pgvector for vector storage,
+So that document embeddings can be stored and queried efficiently.
+
+**Acceptance Criteria:**
+
+**Given** the existing docker-compose.yml with PostgreSQL
+**When** updating the database setup for RAG support
+**Then** docker-compose.yml uses `pgvector/pgvector:pg16` image (superset of postgres, no breaking change)
+**And** `db/init.sql` is renamed to `db/001_chainlit_schema.sql` (existing Chainlit schema)
+**And** `db/002_rag_schema.sql` creates a `documents` table (id UUID PK, filename TEXT, mime_type TEXT, upload_date TIMESTAMPTZ, page_count INT, metadata JSONB)
+**And** `db/002_rag_schema.sql` creates a `document_chunks` table (id UUID PK, document_id UUID FK, content TEXT, page_number INT, chunk_index INT, embedding vector(384), metadata JSONB)
+**And** a vector similarity index (HNSW or IVFFlat) is created on the embedding column
+**And** `CREATE EXTENSION IF NOT EXISTS vector;` is included at the top of 002_rag_schema.sql
+**And** existing Chainlit schema (users, threads, steps, elements, feedbacks) is unaffected
+**And** tests verify schema creation and basic vector operations work
+
+### Story 8.2: Document Processing Pipeline
+
+As a developer,
+I want a pipeline that extracts text from uploaded files, chunks it, generates embeddings, and stores them in pgvector,
+So that uploaded documents become searchable.
+
+**Acceptance Criteria:**
+
+**Given** the `mcp_server/rag/` module
+**When** processing an uploaded document
+**Then** `chunker.py` extracts text from PDF (pymupdf4llm), TXT, MD, and CSV formats
+**And** text is split into fixed-size chunks (512 tokens, 64 token overlap), configurable via `DATA360_RAG_CHUNK_SIZE` and `DATA360_RAG_CHUNK_OVERLAP` env vars
+**And** `embeddings.py` generates 384-dimension embeddings using sentence-transformers/all-MiniLM-L6-v2
+**And** the embedding model is loaded once at startup and cached for the server lifetime (singleton pattern)
+**And** `store.py` stores chunks with embeddings in pgvector and retrieves by cosine similarity
+**And** `processor.py` orchestrates the full pipeline: extract → chunk → embed → store
+**And** each chunk preserves source metadata: filename, page number, chunk index
+**And** pipeline handles errors gracefully (corrupt PDF returns structured error, empty file returns structured error)
+**And** all config via `DATA360_RAG_*` env vars in `config.py`, no hardcoded values
+**And** tests with fixture documents (small PDF, TXT, MD) verify the pipeline
+
+### Story 8.3: search_documents and list_documents MCP Tools
+
+As a user,
+I want to search my uploaded documents and see what's available,
+So that I can find relevant context from local sources alongside World Bank data.
+
+**Acceptance Criteria:**
+
+**Given** the MCP server is running with `DATA360_RAG_ENABLED=true`
+**When** a user calls `search_documents(query="drought northeast Brazil", limit=5, min_score=0.3)`
+**Then** the tool generates an embedding for the query and searches pgvector using the `<=>` cosine distance operator
+**And** converts distance to similarity score (`similarity = 1 - distance`, higher is better)
+**And** returns chunks ranked by descending similarity score, filtered by `min_score` (`similarity >= min_score`)
+**And** response format: `{"success": True, "data": [...], "total_count": N, "returned_count": N, "truncated": False}`
+**And** each result includes: `content`, `source` (filename), `page_number` (or null for non-paginated formats), `similarity_score`, `CITATION_SOURCE`
+**And** `CITATION_SOURCE` follows format-specific patterns: PDFs use `"{filename} (uploaded {date}), p. {page}"`, TXT/MD use `"..., chunk {chunk_index}"`, CSV uses `"..., rows {start}-{end}"`
+
+**Given** the MCP server is running with `DATA360_RAG_ENABLED=true`
+**When** a user calls `list_documents(limit=20)`
+**Then** the tool returns all uploaded documents with metadata (filename, upload_date, page_count, chunk_count, mime_type)
+**And** response follows the standard format
+
+**Given** the MCP server is running with `DATA360_RAG_ENABLED=false`
+**When** listing available tools
+**Then** `search_documents` and `list_documents` are NOT registered
+**And** existing tools (search_indicators, get_data, etc.) work unchanged
+
+**Given** a search or list operation fails
+**When** the error is processed
+**Then** the tool returns the standard error format: `{"success": False, "error": "<message>", "error_type": "api_error"}`
+
+### Story 8.4: Chainlit Upload Integration
+
+As a user,
+I want to attach documents in the chat and have them processed automatically,
+So that I can add context to my conversations without extra steps.
+
+**Acceptance Criteria:**
+
+**Given** the Chainlit app is running with `DATA360_RAG_ENABLED=true`
+**When** a user attaches a file to their message
+**Then** `app/chat.py` processes `message.elements` for file attachments
+**And** only PDF, TXT, MD, and CSV MIME types are accepted
+**And** unsupported formats receive a clear error message
+
+**Given** a valid file is uploaded
+**When** the upload is processed
+**Then** the user sees processing status ("Processing document...", "Document ready for search")
+**And** the document is available via `search_documents` immediately after processing completes
+**And** oversized files (configurable limit) are rejected with a clear error
+
+**Given** `DATA360_RAG_ENABLED=false`
+**When** a user attaches a file
+**Then** the file is not processed for RAG (standard Chainlit element handling only)
+
+**Given** the upload flow
+**When** tests run
+**Then** tests verify upload processing with mock Chainlit elements
+**And** tests verify MIME type filtering
+**And** tests verify error handling for corrupt/empty files
+
+### Story 8.5: System Prompt Update for Cross-Referencing
+
+As a product owner,
+I want Claude to know how to use both API tools and document search tools together,
+So that responses can cross-reference quantitative World Bank data with qualitative document context.
+
+**Acceptance Criteria:**
+
+**Given** the system prompt in `app/prompts.py`
+**When** `DATA360_RAG_ENABLED=true`
+**Then** the system prompt includes a DOCUMENT SEARCH section instructing Claude to:
+  - Use `search_documents` when the user mentions uploaded reports, sub-national data, or local sources
+  - Cross-reference Data360 API data (quantitative) with document context (qualitative) when both are relevant
+  - Format document citations using CITATION_SOURCE: `"{filename} (uploaded {date}), p. {page}"`
+  - Treat document content as user-provided context, not LLM knowledge (grounding boundary extension)
+  - Clearly distinguish between API-sourced data and document-sourced context in responses
+
+**Given** `DATA360_RAG_ENABLED=false`
+**When** the system prompt is generated
+**Then** the DOCUMENT SEARCH section is not included
+**And** existing prompt behavior is unchanged
+
+### Story 8.6: RAG Test Suite
+
+As a developer,
+I want comprehensive tests for the entire RAG pipeline,
+So that I can verify correctness and catch regressions end-to-end.
+
+**Acceptance Criteria:**
+
+**Given** the test directory `tests/mcp_server/test_rag/`
+**When** running `uv run pytest tests/mcp_server/test_rag/`
+**Then** all tests pass
+
+**Given** `test_chunker.py`
+**When** tests run
+**Then** it tests text extraction from PDF, TXT, MD, CSV formats
+**And** tests chunk sizing (512 tokens default) and overlap (64 tokens default)
+**And** tests metadata preservation (filename, page number, chunk index)
+**And** tests error handling for corrupt/empty files
+
+**Given** `test_embeddings.py`
+**When** tests run
+**Then** it tests embedding generation produces 384-dimension vectors
+**And** tests singleton model caching (model loaded once)
+
+**Given** `test_store.py`
+**When** tests run
+**Then** it tests pgvector storage and retrieval
+**And** tests cosine similarity search returns results ranked by score
+**And** tests min_score filtering
+**And** tests CITATION_SOURCE generation for document chunks
+
+**Given** `test_processor.py`
+**When** tests run
+**Then** it tests end-to-end pipeline with fixture documents
+**And** tests error propagation from each pipeline stage
+
+**Given** `test_rag_tools.py`
+**When** tests run
+**Then** it tests `search_documents` tool with mocked store
+**And** tests `list_documents` tool response format
+**And** tests feature flag: tools not registered when `DATA360_RAG_ENABLED=false`
+
+**Given** fixture documents in `tests/mcp_server/fixtures/documents/`
+**When** used in tests
+**Then** fixtures include a small PDF, TXT, and MD file with known content for assertion
