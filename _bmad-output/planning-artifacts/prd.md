@@ -325,8 +325,7 @@ Data360 Voice is a single-page web application built on Chainlit (mounted in Fas
 - Multi-language support (Spanish, French, Portuguese)
 
 **Phase 3 (Expansion):**
-- Sub-national data integration (CEMADEM, CPTEC for Brazil)
-- Document upload / RAG (NDCs, national reports)
+- Sub-national API integration (CEMADEM, CPTEC direct API, if available) [Document upload path moved to MVP via Epic 8]
 - Expansion beyond climate to all World Bank data domains
 - Partnerships with fact-checking networks (IFCN, Africa Check, Chequeado)
 - Open-source MCP server for organic adoption
@@ -337,6 +336,9 @@ Data360 Voice is a single-page web application built on Chainlit (mounted in Fas
 **Technical Risks:**
 - Most technically challenging: LLM grounding boundary (ensuring the AI narrates only API data). Mitigated by strict system prompt constraints and automated citation verification tests.
 - Vector search accuracy depends on Data360 API quality. Mitigated by test suite with 30+ known query-to-indicator mappings.
+- RAG embedding quality depends on sentence-transformers model performance on climate/development text. Mitigated by using all-MiniLM-L6-v2 (well-tested general-purpose model) and feature flag allowing RAG to be disabled without affecting core functionality.
+- sentence-transformers model (~90MB) adds to deployment size and startup time. Mitigated by loading once at startup with singleton caching.
+- Document upload introduces storage growth concerns. Mitigated by reasonable file size limits and chunk deduplication.
 
 **Market Risks:**
 - Primary validation: challenge selection (EOI by Apr 30). If selected, concept is externally validated by World Bank/Media Party.
@@ -435,6 +437,17 @@ Data360 Voice is a single-page web application built on Chainlit (mounted in Fas
 - FR47: The MCP server exposes discoverable resources for popular indicators and available databases
 - FR48: The MCP server exposes a workflow resource documenting the recommended 3-step data retrieval process
 
+### Document Upload & RAG Search
+
+- FR49: Users can upload PDF, TXT, MD, and CSV documents via the Chainlit chat interface
+- FR50: The system can extract text from uploaded documents and split into chunks for vector search
+- FR51: The system can generate embeddings for document chunks and store them in pgvector
+- FR52: The MCP server can search uploaded documents via vector similarity (search_documents tool)
+- FR53: The MCP server can list all uploaded documents with metadata (list_documents tool)
+- FR54: The system can cross-reference Data360 API quantitative data with uploaded document context in a single response
+- FR55: Document-sourced citations follow the CITATION_SOURCE pattern (e.g., "CEMADEM Report (uploaded 2026-03-30), p. 12")
+- FR56: RAG functionality is gated behind DATA360_RAG_ENABLED env var (default: false)
+
 ## Non-Functional Requirements
 
 ### Performance
@@ -464,3 +477,13 @@ Performance targets are defined in the Web Application Specific Requirements sec
 
 - NFR13: Offline indicator search must return results in under 50ms (no network calls)
 - NFR14: Popular indicators and metadata files must load into memory in under 500ms at server startup
+
+### RAG Environment Variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DATA360_RAG_ENABLED` | `false` | Enable document upload & RAG search |
+| `DATA360_RAG_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence-transformers model |
+| `DATA360_RAG_CHUNK_SIZE` | `512` | Chunk size in tokens |
+| `DATA360_RAG_CHUNK_OVERLAP` | `64` | Chunk overlap in tokens |
+| `DATA360_RAG_MIN_SCORE` | `0.3` | Minimum similarity score for search results |

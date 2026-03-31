@@ -60,12 +60,14 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 
 ### Cross-Cutting Concerns Identified
 
-- **Citation integrity:** Dual-source citation strategy. `DATA_SOURCE` is preferred when present (e.g., WB_WDI), but most databases return null. Fallback uses `database_name` from search results, cached in `Data360Client._db_name_cache`. The resolved value is exposed as `CITATION_SOURCE` (the only MCP-added field, not from API). `DATA_SOURCE` is never modified.
+- **Citation integrity:** Tri-source citation strategy. For API data: `DATA_SOURCE` is preferred when present (e.g., WB_WDI), fallback uses `database_name` from search results cached in `Data360Client._db_name_cache`. For uploaded documents: `CITATION_SOURCE` = `"{filename} (uploaded {date}), p. {page}"`. The resolved value is always exposed as `CITATION_SOURCE`. `DATA_SOURCE` is never modified.
 - **Data freshness transparency:** Every response must show the most recent data year and warn when >2 years old.
 - **Transparent failure:** "No data found" must be explicit and honest across all components (MCP server, LLM responses, UI).
 - **Caching strategy:** Spans MCP server (API response cache), backend (indicator metadata), and database (PostgreSQL with TTL).
 - **Dual transport:** MCP server must work identically via stdio (Claude Desktop dev) and HTTP Streamable (Chainlit production).
 - **Error propagation:** API unavailability, rate limits, and data gaps must surface clearly to the user, not be swallowed silently.
+- **RAG data flow (feature-flagged):** `Uploaded Documents → RAG Pipeline (extract → chunk → embed → store) → pgvector → search_documents MCP tool → Claude`. Cross-referencing: Claude combines Data360 API data (quantitative) with document chunks (qualitative/sub-national) in a single response, each with its own `CITATION_SOURCE`.
+- **Feature flag isolation:** `DATA360_RAG_ENABLED=false` (default) means RAG tools are not registered, no sentence-transformers model loaded, no pgvector dependency required. Existing stdio/Claude Desktop usage is completely unaffected.
 
 ## Starter Template Evaluation
 
@@ -111,12 +113,21 @@ data360-voice/
 ├── mcp_server/           # MCP server (standalone, dual transport)
 │   ├── __init__.py
 │   ├── server.py         # FastMCP server definition + tools
-│   └── data360_client.py # World Bank API client (abstracted)
+│   ├── data360_client.py # World Bank API client (abstracted)
+│   └── rag/              # Document upload & RAG search (feature-flagged)
+│       ├── __init__.py
+│       ├── embeddings.py # Embedding generation (sentence-transformers)
+│       ├── chunker.py    # Text extraction + fixed-size chunking
+│       ├── store.py      # pgvector storage and similarity search
+│       └── processor.py  # Upload pipeline orchestrator
 ├── app/                  # Web application
 │   ├── __init__.py
 │   ├── main.py           # FastAPI app + Chainlit mount
 │   ├── chat.py           # Chainlit handlers (@cl.on_message, etc.)
 │   └── config.py         # Settings and environment variables
+├── db/                   # PostgreSQL init scripts
+│   ├── 001_chainlit_schema.sql
+│   └── 002_rag_schema.sql
 ├── .chainlit/
 │   └── config.toml       # Chainlit configuration
 ├── pyproject.toml         # uv project config
@@ -174,6 +185,10 @@ data360-voice/
 | `get_metadata` | POST | `/data360/metadata` | `query` (OData string) | - |
 | `list_indicators` | GET | `/data360/indicators` | `datasetId` | - |
 | `get_disaggregation` | GET | `/data360/disaggregation` | `datasetId` | `indicatorId` |
+| `search_documents` | - | pgvector (local) | `query` | `limit`, `min_score` |
+| `list_documents` | - | pgvector (local) | - | `limit` |
+
+**Note:** `search_documents` and `list_documents` query the local pgvector database, not the Data360 API. Only registered when `DATA360_RAG_ENABLED=true`.
 
 **Tool Signatures:**
 

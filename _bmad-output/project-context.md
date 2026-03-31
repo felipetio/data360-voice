@@ -103,6 +103,16 @@ All tools MUST return one of exactly two shapes:
 - Commit format: `feat(story-key): description` for story branches
 - Story branches → PR → GitHub Copilot review → `/bmad-code-review` → merge
 
+### RAG Module Rules (when DATA360_RAG_ENABLED=true)
+
+- RAG tools (`search_documents`, `list_documents`) only registered when `DATA360_RAG_ENABLED=true`
+- Embedding model loaded once at startup via singleton pattern (same approach as `_db_name_cache`)
+- Document citations use `CITATION_SOURCE` field following existing pattern: `"{filename} (uploaded {date}), p. {page}"`
+- Never store raw file content in pgvector, only chunked text + embeddings
+- Vector similarity uses cosine distance with pgvector `<=>` operator
+- All RAG config via `DATA360_RAG_*` env vars in `config.py`, no hardcoded values
+- RAG module lives in `mcp_server/rag/` (embeddings.py, chunker.py, store.py, processor.py)
+
 ### Critical Anti-Patterns (Never Do)
 
 - **DON'T** recreate `Data360Client` per tool call — breaks `_db_name_cache` across calls
@@ -112,6 +122,10 @@ All tools MUST return one of exactly two shapes:
 - **DON'T** use `Optional[X]` or `Union[X, Y]` — use `X | None` and `X | Y`
 - **DON'T** add `# noqa` without approval
 - **DON'T** construct OData filters with unvalidated strings — use `re.fullmatch(r"[A-Za-z0-9_]+", ...)` to prevent injection
+- **DON'T** import sentence-transformers at module level — lazy-load behind `DATA360_RAG_ENABLED` feature flag
+- **DON'T** process uploads synchronously in the message handler — use async
+- **DON'T** store embeddings without source metadata (filename, page, chunk index)
+- **DON'T** skip the feature flag check when registering RAG tools
 
 ---
 
@@ -121,4 +135,4 @@ All tools MUST return one of exactly two shapes:
 
 **For Humans:** Keep lean and focused. Update when tech stack or patterns change.
 
-Last Updated: 2026-03-26
+Last Updated: 2026-03-30
