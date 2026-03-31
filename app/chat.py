@@ -12,6 +12,19 @@ import app.data  # noqa: F401  # registers Chainlit data layer
 from app.config import settings
 from app.prompts import SYSTEM_PROMPT
 
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
+
+
+@cl.password_auth_callback
+def auth_callback(username: str, password: str):
+    """Simple demo auth — single hardcoded user for local development."""
+    if username == "demo" and password == "demo":
+        return cl.User(identifier="demo", metadata={"role": "user"})
+    return None
+
+
 logger = logging.getLogger(__name__)
 
 # MCP session key used in cl.user_session
