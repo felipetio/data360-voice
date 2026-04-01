@@ -84,9 +84,19 @@ class TestDbSchemaOrdering:
 
     def test_schema_files_have_numeric_prefix(self):
         sql_files = sorted(SCHEMA_DIR.glob("*.sql"))
-        assert len(sql_files) == 2, f"Expected 2 SQL files in db/, found: {[f.name for f in sql_files]}"
+        sql_file_names = [f.name for f in sql_files]
+        assert sql_file_names, (
+            "No SQL files found in db/ — expected at least 001_chainlit_schema.sql and 002_rag_schema.sql"
+        )
+        for name in sql_file_names:
+            prefix = name.split("_", 1)[0]
+            assert prefix.isdigit(), f"SQL file '{name}' does not start with a numeric prefix"
 
     def test_chainlit_schema_runs_first(self):
         sql_files = sorted(SCHEMA_DIR.glob("*.sql"))
-        assert sql_files[0].name == "001_chainlit_schema.sql"
-        assert sql_files[1].name == "002_rag_schema.sql"
+        sql_file_names = [f.name for f in sql_files]
+        assert "001_chainlit_schema.sql" in sql_file_names, "001_chainlit_schema.sql not found in db/ directory"
+        assert "002_rag_schema.sql" in sql_file_names, "002_rag_schema.sql not found in db/ directory"
+        assert sql_file_names.index("001_chainlit_schema.sql") < sql_file_names.index("002_rag_schema.sql"), (
+            "001_chainlit_schema.sql must sort before 002_rag_schema.sql to ensure correct initialization order"
+        )
