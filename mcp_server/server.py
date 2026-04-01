@@ -1,26 +1,35 @@
 """FastMCP server with Data360 API tools."""
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import Any
 
 from fastmcp import FastMCP
 
+from mcp_server import config
 from mcp_server.data360_client import Data360Client
 
 logger = logging.getLogger(__name__)
 
 _client: Data360Client | None = None
+_db_pool = None  # asyncpg.Pool when RAG_ENABLED=true, None otherwise
 
 
 @asynccontextmanager
 async def _lifespan(server: FastMCP):
-    global _client
+    global _client, _db_pool
     _client = Data360Client()
+    if config.RAG_ENABLED:
+        import asyncpg  # noqa: PLC0415
+
+        _db_pool = await asyncpg.create_pool(config.DATABASE_URL, min_size=1, max_size=5)
     try:
         yield
     finally:
         await _client.close()
+        if _db_pool is not None:
+            await _db_pool.close()
 
 
 mcp = FastMCP(
@@ -236,6 +245,96 @@ async def get_disaggregation(
     except Exception as exc:
         logger.error("get_disaggregation failed: %s", exc)
         return {"success": False, "error": str(exc), "error_type": "api_error"}
+
+
+if config.RAG_ENABLED:
+    from mcp_server.rag.citation import build_citation_source
+    from mcp_server.rag.embeddings import generate_query_embedding
+    from mcp_server.rag.store import list_all_documents, search_similar
+
+    @mcp.tool()
+    async def search_documents(
+        query: str,
+        limit: int = 5,
+        min_score: float = 0.3,
+    ) -> dict[str, Any]:
+        """Search uploaded documents using semantic similarity.
+
+        Args:
+            query: Natural language search query.
+            limit: Maximum number of results to return (default 5).
+            min_score: Minimum similarity score threshold 0–1 (default 0.3).
+
+        Returns:
+            Dict with success status, data list of matching chunks with
+            content, source, similarity_score, and CITATION_SOURCE.
+        """
+        if _db_pool is None:
+            return {"success": False, "error": "RAG database pool not initialized", "error_type": "api_error"}
+        try:
+            # generate_query_embedding is CPU-bound (sentence-transformers) — offload to thread
+            query_embedding = await asyncio.to_thread(generate_query_embedding, query)
+            async with _db_pool.acquire() as conn:
+                results = await search_similar(conn, query_embedding, limit=limit, min_score=min_score)
+            data = [
+                {
+                    "content": r.content,
+                    "source": r.source,
+                    "page_number": r.page_number,
+                    "chunk_index": r.chunk_index,
+                    "similarity_score": r.similarity_score,
+                    "document_id": r.document_id,
+                    "upload_date": r.upload_date.isoformat(),
+                    "CITATION_SOURCE": build_citation_source(r.source, r.upload_date, r.page_number, r.chunk_index),
+                }
+                for r in results
+            ]
+            return {
+                "success": True,
+                "data": data,
+                "total_count": len(data),
+                "returned_count": len(data),
+                "truncated": False,
+            }
+        except Exception as exc:
+            logger.error("search_documents failed: %s", exc)
+            return {"success": False, "error": str(exc), "error_type": "api_error"}
+
+    @mcp.tool()
+    async def list_documents(
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        """List all uploaded documents with metadata.
+
+        Args:
+            limit: Maximum number of documents to return (default 20).
+
+        Returns:
+            Dict with success status and data list of documents
+            with filename, mime_type, upload_date, page_count, chunk_count.
+        """
+        if _db_pool is None:
+            return {"success": False, "error": "RAG database pool not initialized", "error_type": "api_error"}
+        try:
+            async with _db_pool.acquire() as conn:
+                docs = await list_all_documents(conn, limit=limit)
+            data = [
+                {
+                    **{k: v for k, v in doc.items() if k != "upload_date"},
+                    "upload_date": doc["upload_date"].isoformat() if doc.get("upload_date") else None,
+                }
+                for doc in docs
+            ]
+            return {
+                "success": True,
+                "data": data,
+                "total_count": len(data),
+                "returned_count": len(data),
+                "truncated": False,
+            }
+        except Exception as exc:
+            logger.error("list_documents failed: %s", exc)
+            return {"success": False, "error": str(exc), "error_type": "api_error"}
 
 
 if __name__ == "__main__":
