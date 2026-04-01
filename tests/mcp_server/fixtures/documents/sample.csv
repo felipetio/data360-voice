@@ -1,0 +1,6 @@
+state,year,rainfall_mm,temp_celsius,drought_index
+Ceará,2020,487,28.3,0.72
+Ceará,2021,412,28.7,0.81
+Pernambuco,2020,523,27.9,0.68
+Pernambuco,2021,498,28.1,0.71
+Bahia,2020,612,27.4,0.55
