@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-24
-last_updated: 2026-04-01  # updated: 8-3 in-progress
+last_updated: 2026-04-01  # updated: 8-3 review
 project: bmad
 project_key: NOKEY
 tracking_system: file-system
@@ -103,7 +103,7 @@ development_status:
   epic-8: in-progress
   8-1-pgvector-schema-and-database-migration: review
   8-2-document-processing-pipeline: ready-for-dev
-  8-3-search-documents-and-list-documents-mcp-tools: in-progress
+  8-3-search-documents-and-list-documents-mcp-tools: review
   8-4-chainlit-upload-integration: backlog
   8-5-system-prompt-update-for-cross-referencing: backlog
   8-6-rag-test-suite: backlog
