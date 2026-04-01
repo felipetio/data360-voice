@@ -1,11 +1,39 @@
 """Tests for MCP RAG tools — search_documents and list_documents."""
 
+import importlib
+import sys
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mcp_server.rag.citation import build_citation_source
+from mcp_server.rag.citation import build_citation_source  # noqa: E402
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _reload_server_with_rag_enabled():
+    """Re-import mcp_server.server with RAG_ENABLED=True so the conditional
+    tool registration block actually runs, regardless of the env var set in CI.
+    """
+    import mcp_server.config as cfg
+
+    original = cfg.RAG_ENABLED
+    cfg.RAG_ENABLED = True
+    # Remove cached module so the if-block re-executes on next import
+    if "mcp_server.server" in sys.modules:
+        del sys.modules["mcp_server.server"]
+    module = importlib.import_module("mcp_server.server")
+    # Restore so other tests are unaffected
+    cfg.RAG_ENABLED = original
+    return module
+
+
+# ---------------------------------------------------------------------------
+# Citation tests (no RAG flag dependency)
+# ---------------------------------------------------------------------------
 
 
 class TestBuildCitationSource:
@@ -31,8 +59,8 @@ class TestBuildCitationSource:
 
     def test_page_number_zero_treated_as_set(self):
         dt = datetime(2026, 4, 1)
+        # page_number=0 is falsy but valid — must NOT fall back to chunk format
         result = build_citation_source("doc.pdf", dt, page_number=0, chunk_index=0)
-        # page_number=0 is falsy but valid — should NOT fall back to chunk format
         assert "p. 0" in result
 
     def test_date_object_accepted(self):
@@ -41,6 +69,11 @@ class TestBuildCitationSource:
         d = date(2026, 6, 1)
         result = build_citation_source("report.pdf", d, page_number=1, chunk_index=0)
         assert "2026-06-01" in result
+
+
+# ---------------------------------------------------------------------------
+# search_documents tests
+# ---------------------------------------------------------------------------
 
 
 class TestSearchDocumentsTool:
@@ -58,21 +91,20 @@ class TestSearchDocumentsTool:
 
     @pytest.mark.asyncio
     async def test_search_returns_results(self, mock_search_result):
-        import mcp_server.server as srv
-
-        mock_pool = MagicMock()
-        mock_conn = AsyncMock()
-        mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
-        srv._db_pool = mock_pool
-
+        # Patch in the source modules (where the names actually live at call time)
         with (
-            patch("mcp_server.server.generate_query_embedding", return_value=[0.1] * 384),
-            patch("mcp_server.server.search_similar", new_callable=AsyncMock, return_value=[mock_search_result]),
+            patch("mcp_server.rag.embeddings.generate_query_embedding", return_value=[0.1] * 384),
+            patch("mcp_server.rag.store.search_similar", new_callable=AsyncMock, return_value=[mock_search_result]),
         ):
-            from mcp_server.server import search_documents
+            srv = _reload_server_with_rag_enabled()
 
-            result = await search_documents("drought Ceará", limit=5)
+            mock_pool = MagicMock()
+            mock_conn = AsyncMock()
+            mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+            mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+            srv._db_pool = mock_pool
+
+            result = await srv.search_documents("drought Ceará", limit=5)
 
         assert result["success"] is True
         assert len(result["data"]) == 1
@@ -83,21 +115,19 @@ class TestSearchDocumentsTool:
 
     @pytest.mark.asyncio
     async def test_search_returns_empty_list(self):
-        import mcp_server.server as srv
-
-        mock_pool = MagicMock()
-        mock_conn = AsyncMock()
-        mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
-        srv._db_pool = mock_pool
-
         with (
-            patch("mcp_server.server.generate_query_embedding", return_value=[0.1] * 384),
-            patch("mcp_server.server.search_similar", new_callable=AsyncMock, return_value=[]),
+            patch("mcp_server.rag.embeddings.generate_query_embedding", return_value=[0.1] * 384),
+            patch("mcp_server.rag.store.search_similar", new_callable=AsyncMock, return_value=[]),
         ):
-            from mcp_server.server import search_documents
+            srv = _reload_server_with_rag_enabled()
 
-            result = await search_documents("no match query")
+            mock_pool = MagicMock()
+            mock_conn = AsyncMock()
+            mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+            mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+            srv._db_pool = mock_pool
+
+            result = await srv.search_documents("no match query")
 
         assert result["success"] is True
         assert result["data"] == []
@@ -105,20 +135,18 @@ class TestSearchDocumentsTool:
 
     @pytest.mark.asyncio
     async def test_search_handles_exception(self):
-        import mcp_server.server as srv
-
-        mock_pool = MagicMock()
-        mock_pool.acquire.side_effect = Exception("DB connection failed")
-        srv._db_pool = mock_pool
-
-        with patch("mcp_server.server.generate_query_embedding", return_value=[0.1] * 384):
-            from mcp_server.server import search_documents
-
-            result = await search_documents("drought")
+        with patch("mcp_server.rag.embeddings.generate_query_embedding", side_effect=Exception("embed failed")):
+            srv = _reload_server_with_rag_enabled()
+            result = await srv.search_documents("drought")
 
         assert result["success"] is False
         assert result["error_type"] == "api_error"
-        assert "DB connection failed" in result["error"]
+        assert "embed failed" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# list_documents tests
+# ---------------------------------------------------------------------------
 
 
 class TestListDocumentsTool:
@@ -135,18 +163,16 @@ class TestListDocumentsTool:
 
     @pytest.mark.asyncio
     async def test_list_returns_documents(self, mock_doc):
-        import mcp_server.server as srv
+        with patch("mcp_server.rag.store.list_all_documents", new_callable=AsyncMock, return_value=[mock_doc]):
+            srv = _reload_server_with_rag_enabled()
 
-        mock_pool = MagicMock()
-        mock_conn = AsyncMock()
-        mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
-        mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
-        srv._db_pool = mock_pool
+            mock_pool = MagicMock()
+            mock_conn = AsyncMock()
+            mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+            mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+            srv._db_pool = mock_pool
 
-        with patch("mcp_server.server.list_all_documents", new_callable=AsyncMock, return_value=[mock_doc]):
-            from mcp_server.server import list_documents
-
-            result = await list_documents(limit=20)
+            result = await srv.list_documents(limit=20)
 
         assert result["success"] is True
         assert len(result["data"]) == 1
@@ -156,29 +182,43 @@ class TestListDocumentsTool:
 
     @pytest.mark.asyncio
     async def test_list_handles_exception(self):
-        import mcp_server.server as srv
+        with patch(
+            "mcp_server.rag.store.list_all_documents",
+            new_callable=AsyncMock,
+            side_effect=Exception("pool exhausted"),
+        ):
+            srv = _reload_server_with_rag_enabled()
 
-        mock_pool = MagicMock()
-        mock_pool.acquire.side_effect = Exception("pool exhausted")
-        srv._db_pool = mock_pool
+            mock_pool = MagicMock()
+            mock_conn = AsyncMock()
+            mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+            mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+            srv._db_pool = mock_pool
 
-        with patch("mcp_server.server.list_all_documents", new_callable=AsyncMock):
-            from mcp_server.server import list_documents
-
-            result = await list_documents()
+            result = await srv.list_documents()
 
         assert result["success"] is False
         assert result["error_type"] == "api_error"
 
 
+# ---------------------------------------------------------------------------
+# Feature flag test
+# ---------------------------------------------------------------------------
+
+
 class TestFeatureFlag:
-    def test_rag_disabled_tools_not_importable_as_attributes(self):
-        """When RAG_ENABLED=False, search_documents/list_documents should not exist on server module."""
-        import mcp_server.config as cfg
+    def test_rag_disabled_existing_tools_unaffected(self):
+        """When RAG_ENABLED=False, existing tools must still be present."""
         import mcp_server.server as srv
 
-        if not cfg.RAG_ENABLED:
-            assert not hasattr(srv, "search_documents") or True  # tools registered conditionally
-            # The key check: existing tools still work
-            assert hasattr(srv, "search_indicators")
-            assert hasattr(srv, "get_data")
+        # Ensure we have a clean module loaded with current flag state
+        assert hasattr(srv, "search_indicators")
+        assert hasattr(srv, "get_data")
+        assert hasattr(srv, "get_metadata")
+        assert hasattr(srv, "list_indicators")
+
+    def test_rag_enabled_tools_registered(self):
+        """When RAG_ENABLED=True, search_documents and list_documents must exist."""
+        srv = _reload_server_with_rag_enabled()
+        assert hasattr(srv, "search_documents")
+        assert hasattr(srv, "list_documents")
