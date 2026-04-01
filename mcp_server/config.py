@@ -40,3 +40,8 @@ MAX_RECORDS = 5000
 MCP_TRANSPORT = os.getenv("MCP_TRANSPORT", "stdio")
 _mcp_port_raw = os.getenv("MCP_PORT")
 MCP_PORT = int(_mcp_port_raw) if _mcp_port_raw is not None else None
+
+# RAG Configuration (feature-flagged via DATA360_RAG_ENABLED)
+RAG_ENABLED: bool = os.getenv("DATA360_RAG_ENABLED", "false").lower() == "true"
+RAG_CHUNK_SIZE: int = int(os.getenv("DATA360_RAG_CHUNK_SIZE", "512"))
+RAG_CHUNK_OVERLAP: int = int(os.getenv("DATA360_RAG_CHUNK_OVERLAP", "64"))
