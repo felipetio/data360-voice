@@ -41,6 +41,9 @@ MCP_TRANSPORT = os.getenv("MCP_TRANSPORT", "stdio")
 _mcp_port_raw = os.getenv("MCP_PORT")
 MCP_PORT = int(_mcp_port_raw) if _mcp_port_raw is not None else None
 
+# Database (required for RAG tools; Chainlit uses this too via app/data.py)
+DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+
 # RAG Configuration (feature-flagged via DATA360_RAG_ENABLED)
 RAG_ENABLED: bool = os.getenv("DATA360_RAG_ENABLED", "false").lower() == "true"
 RAG_CHUNK_SIZE: int = _int_env("DATA360_RAG_CHUNK_SIZE", 512, min_val=1)
