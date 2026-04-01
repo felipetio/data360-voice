@@ -1,5 +1,6 @@
 """FastMCP server with Data360 API tools."""
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import Any
@@ -256,7 +257,7 @@ if config.RAG_ENABLED:
         query: str,
         limit: int = 5,
         min_score: float = 0.3,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Search uploaded documents using semantic similarity.
 
         Args:
@@ -268,8 +269,11 @@ if config.RAG_ENABLED:
             Dict with success status, data list of matching chunks with
             content, source, similarity_score, and CITATION_SOURCE.
         """
+        if _db_pool is None:
+            return {"success": False, "error": "RAG database pool not initialized", "error_type": "api_error"}
         try:
-            query_embedding = generate_query_embedding(query)
+            # generate_query_embedding is CPU-bound (sentence-transformers) — offload to thread
+            query_embedding = await asyncio.to_thread(generate_query_embedding, query)
             async with _db_pool.acquire() as conn:
                 results = await search_similar(conn, query_embedding, limit=limit, min_score=min_score)
             data = [
@@ -299,7 +303,7 @@ if config.RAG_ENABLED:
     @mcp.tool()
     async def list_documents(
         limit: int = 20,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """List all uploaded documents with metadata.
 
         Args:
@@ -309,6 +313,8 @@ if config.RAG_ENABLED:
             Dict with success status and data list of documents
             with filename, mime_type, upload_date, page_count, chunk_count.
         """
+        if _db_pool is None:
+            return {"success": False, "error": "RAG database pool not initialized", "error_type": "api_error"}
         try:
             async with _db_pool.acquire() as conn:
                 docs = await list_all_documents(conn, limit=limit)
