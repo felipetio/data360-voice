@@ -8,7 +8,7 @@ import logging
 
 import asyncpg
 
-from mcp_server.rag.chunker import chunk_document
+from mcp_server.rag.chunker import chunk_document, extract_text_pdf
 from mcp_server.rag.embeddings import generate_embeddings
 from mcp_server.rag.store import store_document
 
@@ -38,6 +38,12 @@ async def process_upload(
         logger.info("Processing upload: '%s' (%s, %d bytes)", filename, mime_type, len(file_bytes))
 
         # Step 1: Extract and chunk text
+        # For PDFs, extract page count directly from the document (not from chunks,
+        # which would undercount blank/unextractable pages).
+        page_count: int | None = None
+        if mime_type == "application/pdf":
+            _, page_count = extract_text_pdf(file_bytes)
+
         chunks = chunk_document(file_bytes, mime_type)
         if not chunks:
             return {
@@ -51,12 +57,6 @@ async def process_upload(
         texts = [chunk.content for chunk in chunks]
         embeddings = generate_embeddings(texts)
         logger.debug("Generated %d embeddings for '%s'", len(embeddings), filename)
-
-        # Step 3: Determine page count (max page_number for PDFs, None otherwise)
-        page_count: int | None = None
-        if mime_type == "application/pdf":
-            pages_with_number = [c.page_number for c in chunks if c.page_number is not None]
-            page_count = max(pages_with_number) if pages_with_number else None
 
         # Step 4: Store in pgvector
         document_id = await store_document(conn, filename, mime_type, chunks, embeddings, page_count)

@@ -43,5 +43,5 @@ MCP_PORT = int(_mcp_port_raw) if _mcp_port_raw is not None else None
 
 # RAG Configuration (feature-flagged via DATA360_RAG_ENABLED)
 RAG_ENABLED: bool = os.getenv("DATA360_RAG_ENABLED", "false").lower() == "true"
-RAG_CHUNK_SIZE: int = int(os.getenv("DATA360_RAG_CHUNK_SIZE", "512"))
-RAG_CHUNK_OVERLAP: int = int(os.getenv("DATA360_RAG_CHUNK_OVERLAP", "64"))
+RAG_CHUNK_SIZE: int = _int_env("DATA360_RAG_CHUNK_SIZE", 512, min_val=1)
+RAG_CHUNK_OVERLAP: int = _int_env("DATA360_RAG_CHUNK_OVERLAP", 64, min_val=0)

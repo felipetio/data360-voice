@@ -5,21 +5,30 @@ first use and cached for the server lifetime.
 """
 
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
 
 _embedder = None  # module-level singleton
+_embedder_lock = threading.Lock()
 
 
 def get_embedder():
-    """Return the cached SentenceTransformer model, loading it on first call."""
-    global _embedder  # noqa: PLW0603
-    if _embedder is None:
-        from sentence_transformers import SentenceTransformer  # noqa: PLC0415
+    """Return the cached SentenceTransformer model, loading it on first call.
 
-        logger.info("Loading sentence-transformers/all-MiniLM-L6-v2 (384 dims)…")
-        _embedder = SentenceTransformer("all-MiniLM-L6-v2")
-        logger.info("Embedding model loaded and cached.")
+    Thread-safe: uses a double-checked locking pattern so concurrent callers
+    don't trigger multiple model loads.
+    """
+    global _embedder  # noqa: PLW0603
+    if _embedder is not None:
+        return _embedder
+    with _embedder_lock:
+        if _embedder is None:
+            from sentence_transformers import SentenceTransformer  # noqa: PLC0415
+
+            logger.info("Loading sentence-transformers/all-MiniLM-L6-v2 (384 dims)…")
+            _embedder = SentenceTransformer("all-MiniLM-L6-v2")
+            logger.info("Embedding model loaded and cached.")
     return _embedder
 
 

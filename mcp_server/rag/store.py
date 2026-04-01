@@ -43,31 +43,32 @@ async def store_document(
         raise ValueError(f"chunks ({len(chunks)}) and embeddings ({len(embeddings)}) must have equal length")
 
     doc_id = str(uuid.uuid4())
-    await conn.execute(
-        """
-        INSERT INTO documents (id, filename, mime_type, upload_date, page_count, metadata)
-        VALUES ($1, $2, $3, NOW(), $4, '{}'::jsonb)
-        """,
-        doc_id,
-        filename,
-        mime_type,
-        page_count,
-    )
-
-    for chunk, embedding in zip(chunks, embeddings):
-        chunk_id = str(uuid.uuid4())
+    async with conn.transaction():
         await conn.execute(
             """
-            INSERT INTO document_chunks (id, document_id, content, page_number, chunk_index, embedding, metadata)
-            VALUES ($1, $2, $3, $4, $5, $6::vector, '{}'::jsonb)
+            INSERT INTO documents (id, filename, mime_type, upload_date, page_count, metadata)
+            VALUES ($1, $2, $3, NOW(), $4, '{}'::jsonb)
             """,
-            chunk_id,
             doc_id,
-            chunk.content,
-            chunk.page_number,
-            chunk.chunk_index,
-            str(embedding),  # asyncpg + pgvector: pass as string representation
+            filename,
+            mime_type,
+            page_count,
         )
+
+        for chunk, embedding in zip(chunks, embeddings):
+            chunk_id = str(uuid.uuid4())
+            await conn.execute(
+                """
+                INSERT INTO document_chunks (id, document_id, content, page_number, chunk_index, embedding, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6::vector, '{}'::jsonb)
+                """,
+                chunk_id,
+                doc_id,
+                chunk.content,
+                chunk.page_number,
+                chunk.chunk_index,
+                str(embedding),  # asyncpg + pgvector: pass as string representation
+            )
 
     logger.info("Stored document '%s' with %d chunks (id=%s)", filename, len(chunks), doc_id)
     return doc_id
