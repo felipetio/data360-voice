@@ -305,9 +305,11 @@ async def on_message(message: cl.Message):
         for element in message.elements:
             if isinstance(element, cl.File):
                 await _process_upload_element(element)
-        # If message has ONLY attachments and no text, skip the agentic loop
-        if not message.content.strip():
-            return
+
+    # If message has ONLY attachments and no text, skip the agentic loop
+    # (applies regardless of RAG setting — empty content causes API errors)
+    if not message.content.strip():
+        return
 
     # Retrieve conversation history and append new user turn
     history = cl.user_session.get("history", [])
