@@ -1,6 +1,6 @@
 # Story 8.5: System Prompt Update for Cross-Referencing
 
-**Status:** review
+**Status:** done
 **Epic:** 8 — Document Upload & RAG Search
 **Story Key:** 8-5-system-prompt-update-for-cross-referencing
 **Created:** 2026-04-02
