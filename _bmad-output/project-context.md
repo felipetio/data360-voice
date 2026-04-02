@@ -5,7 +5,7 @@ date: '2026-03-26'
 sections_completed:
   ['technology_stack', 'language_rules', 'framework_rules', 'citation_integrity', 'tool_response_contract', 'testing_rules', 'quality_rules', 'workflow_rules', 'anti_patterns']
 status: 'complete'
-rule_count: 32
+rule_count: 43
 optimized_for_llm: true
 ---
 
@@ -113,6 +113,18 @@ All tools MUST return one of exactly two shapes:
 - All RAG config via `DATA360_RAG_*` env vars in `config.py`, no hardcoded values
 - RAG module lives in `mcp_server/rag/` (embeddings.py, chunker.py, store.py, processor.py)
 
+### Citation Pipeline Rules (Server-Side Registry)
+
+- Citations are pipeline-guaranteed: `app/citations.py` builds a structured citation registry from MCP tool responses server-side
+- The LLM's only citation responsibility is placing `[n]` markers in prose — it does NOT generate the reference list
+- `app/citations.py` handles: extraction from tool responses, deduplication (one ref per database+indicator), IEEE-light formatting
+- `app/prompts.py` contains the system prompt with grounding boundary and citation marker instructions — keep decoupled from `app/chat.py`
+- The `references: list[dict]` is attached to Chainlit message metadata for downstream UI consumption (Epic 9)
+- Each reference entry: `id`, `source`, `indicator_code`, `indicator_name`, `database_id`, `years`, `type` ("api" | "document")
+- Document references additionally include: `filename`, `upload_date`, `page`/`chunk` fields
+- Reference list title adapts to conversation language ("References", "Referências", "Referencias")
+- If a response has no data points (clarification, "no data found"), no reference list is appended
+
 ### Critical Anti-Patterns (Never Do)
 
 - **DON'T** recreate `Data360Client` per tool call — breaks `_db_name_cache` across calls
@@ -126,6 +138,8 @@ All tools MUST return one of exactly two shapes:
 - **DON'T** process uploads synchronously in the message handler — use async
 - **DON'T** store embeddings without source metadata (filename, page, chunk index)
 - **DON'T** skip the feature flag check when registering RAG tools
+- **DON'T** let the LLM generate the reference list — the server appends it via `app/citations.py`
+- **DON'T** put system prompt text in `app/chat.py` — it belongs in `app/prompts.py`
 
 ---
 
@@ -135,4 +149,4 @@ All tools MUST return one of exactly two shapes:
 
 **For Humans:** Keep lean and focused. Update when tech stack or patterns change.
 
-Last Updated: 2026-03-30
+Last Updated: 2026-04-02

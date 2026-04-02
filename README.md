@@ -17,7 +17,7 @@ Data360 Voice gives Claude (or any MCP client) five tools to interact with World
 | `list_indicators` | List all indicators available in a given dataset |
 | `get_disaggregation` | Get available disaggregation dimensions for a dataset or indicator |
 
-Responses from the `get_data` tool include citation fields (`DATA_SOURCE` / `CITATION_SOURCE`) so Claude can ground answers in verifiable sources. Other tools return raw API data that may not include these fields.
+Responses from the `get_data` tool include citation fields (`DATA_SOURCE` / `CITATION_SOURCE`) so answers can be grounded in verifiable sources. In the web app (planned), citations are pipeline-guaranteed: the server builds a structured citation registry from tool responses, so the LLM never fabricates source attribution. Other tools return raw API data that may not include these fields.
 
 
 ## Requirements

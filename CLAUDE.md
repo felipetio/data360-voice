@@ -71,6 +71,11 @@ mcp_server/
   config.py          # ENV-based config with defaults (DATA360_* vars)
   data360_client.py  # Async httpx client: param mapping, pagination, retry, citation enrichment
   server.py          # FastMCP server instance, lifespan, and tool definitions
+app/                 # Web application (planned, Epic 2+)
+  chat.py            # Chainlit handlers, agentic loop
+  citations.py       # Citation registry pipeline (extraction, dedup, formatting)
+  prompts.py         # System prompt for LLM grounding and citation markers
+  config.py          # Web app settings and environment variables
 ```
 
 **Data flow:** World Bank Data360 API -> Data360Client -> MCP tools -> Claude Desktop / Chainlit
@@ -83,7 +88,7 @@ mcp_server/
 - `get_disaggregation` — dimension/disaggregation info via `/data360/disaggregation`
 
 **Key design decisions:**
-- Citation integrity: `DATA_SOURCE` flows unmutated from API response; non-WDI databases get `CITATION_SOURCE` enriched from cached DB metadata
+- Citation integrity: `DATA_SOURCE` flows unmutated from API response; non-WDI databases get `CITATION_SOURCE` enriched from cached DB metadata. In the web app, citations are pipeline-guaranteed: `app/citations.py` builds a server-side registry from tool responses; the LLM only places `[n]` markers
 - All config via environment variables with sensible defaults, no hardcoded values
 - Auto-pagination (1000/page, 5000 cap per tool call)
 - Retry with exponential backoff on transient failures (429/5xx)
