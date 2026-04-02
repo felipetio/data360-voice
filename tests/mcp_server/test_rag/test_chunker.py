@@ -78,3 +78,22 @@ class TestFixtureDocuments:
 
     def test_sample_csv_fixture_exists(self):
         assert (FIXTURES / "sample.csv").exists()
+
+    def test_sample_pdf_fixture_exists(self):
+        assert (FIXTURES / "sample.pdf").exists()
+
+    def test_sample_pdf_chunk_extracts_text(self):
+        """PDF fixture contains known text that survives extraction and chunking."""
+        pdf_bytes = (FIXTURES / "sample.pdf").read_bytes()
+        chunks = chunk_document(pdf_bytes, "application/pdf")
+        assert len(chunks) >= 1
+        combined = " ".join(c.content for c in chunks).lower()
+        # Known text inserted when the fixture was generated
+        assert "brazil" in combined or "drought" in combined or "climate" in combined
+
+    def test_sample_pdf_chunks_have_page_numbers(self):
+        """PDF chunks carry page_number metadata."""
+        pdf_bytes = (FIXTURES / "sample.pdf").read_bytes()
+        chunks = chunk_document(pdf_bytes, "application/pdf")
+        assert len(chunks) >= 1
+        assert all(c.page_number is not None for c in chunks)
