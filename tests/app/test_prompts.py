@@ -1,4 +1,4 @@
-"""Tests for conditional system prompt generation (Story 8.5)."""
+"""Tests for system prompt: conditional RAG section (8.5) and grounding boundary + citation markers (3.1)."""
 
 from app.prompts import SYSTEM_PROMPT, get_system_prompt
 
@@ -19,7 +19,7 @@ class TestGetSystemPrompt:
         result = get_system_prompt(rag_enabled=True)
         # Key phrases from the base prompt must still be present
         assert "STRICT CONSTRAINTS" in result
-        assert "CITATION FORMAT" in result
+        assert "CITATION MARKERS" in result
         assert "MULTI-TURN CONTEXT RESOLUTION" in result
 
     def test_rag_disabled_excludes_document_search_section(self):
@@ -58,3 +58,48 @@ class TestGetSystemPrompt:
         from app.prompts import SYSTEM_PROMPT as sp
 
         assert sp == get_system_prompt(rag_enabled=False)
+
+
+class TestGroundingBoundary:
+    """Story 3.1: grounding boundary reinforcement and citation marker instructions."""
+
+    def test_base_prompt_contains_citation_marker_instructions(self):
+        """AC5: Citation marker [n] instructions present in base prompt."""
+        result = get_system_prompt(rag_enabled=False)
+        assert "[1]" in result
+        assert "[2]" in result
+        assert "marker" in result.lower()
+
+    def test_base_prompt_includes_reference_list_instructions(self):
+        """AC6: LLM is told to append a numbered reference list."""
+        result = get_system_prompt(rag_enabled=False)
+        assert "reference list" in result.lower()
+        assert "CITATION_SOURCE" in result
+
+    def test_base_prompt_grounding_boundary_causation(self):
+        """AC3: Causation constraint is explicit."""
+        result = get_system_prompt(rag_enabled=False)
+        assert "causation" in result.lower()
+
+    def test_base_prompt_grounding_boundary_no_opinions(self):
+        """AC4: No-opinions constraint is explicit."""
+        result = get_system_prompt(rag_enabled=False)
+        assert "opinions" in result.lower()
+
+    def test_marker_reuse_instruction(self):
+        """AC7: Instruction to reuse marker for same source is present."""
+        result = get_system_prompt(rag_enabled=False)
+        assert "reuse" in result.lower()
+        assert "same" in result.lower()
+
+    def test_no_old_inline_citation_format(self):
+        """AC5: Old citation instruction 'Example: (Source: ...)' removed from prompt."""
+        result = get_system_prompt(rag_enabled=False)
+        assert 'Example: "(Source:' not in result
+
+    def test_rag_document_section_uses_numbered_markers(self):
+        """AC8: Document search section aligns with [n] marker system."""
+        result = get_system_prompt(rag_enabled=True)
+        # The document section should reference [n] markers
+        assert "[n]" in result
+        assert "Do not construct citations manually" in result

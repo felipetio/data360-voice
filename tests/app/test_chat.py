@@ -1091,11 +1091,13 @@ class TestNarrativeGeneration:
         # No forecasts
         assert "forecast" in prompt_lower or "prediction" in prompt_lower
 
-    def test_system_prompt_instructs_citation_source(self):
-        """AC1/AC2: System prompt must reference CITATION_SOURCE for citation format."""
+    def test_system_prompt_instructs_citation_markers(self):
+        """AC1/AC2: System prompt must instruct numbered [n] citation markers."""
         from app.prompts import SYSTEM_PROMPT
 
-        assert "CITATION_SOURCE" in SYSTEM_PROMPT
+        assert "[1]" in SYSTEM_PROMPT
+        assert "[2]" in SYSTEM_PROMPT
+        assert "marker" in SYSTEM_PROMPT.lower()
 
     def test_system_prompt_instructs_gap_flagging(self):
         """AC3: System prompt must instruct flagging of missing years/gaps in data."""
