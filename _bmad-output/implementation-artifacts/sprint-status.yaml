@@ -1,5 +1,5 @@
 # generated: 2026-03-24
-# last_updated: 2026-03-30 (Sprint Change Proposal: Added Epic 8 RAG, reordered 2→8→3→4→5→6→7)
+# last_updated: 2026-04-02 (Epic 3 refactored for citation pipeline, Epic 9 added, order: 2→8→3→9→4→5→6→7)
 # project: bmad
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-24
-last_updated: 2026-04-02  # updated: 8-3 done, 8-4 done, 8-5 done, 8-6 done, epic-8 done
+last_updated: 2026-04-02  # updated: Epic 3 refactored (citation registry pipeline), Epic 9 added (Citation UI & Journalist Export)
 project: bmad
 project_key: NOKEY
 tracking_system: file-system
@@ -64,9 +64,11 @@ development_status:
   epic-2-retrospective: done
 
   # Epic 3: Trust, Citations & LLM Grounding
+  # Refactored 2026-04-02: Story 3.2 changed from LLM-formatted citations to
+  # pipeline-built citation registry (deterministic from tool responses)
   epic-3: backlog
   3-1-system-prompt-for-llm-grounding-boundary: backlog
-  3-2-data-source-citation-on-every-response: backlog
+  3-2-citation-registry-pipeline: backlog  # was: data-source-citation-on-every-response
   3-3-data-freshness-transparency: backlog
   epic-3-retrospective: optional
 
@@ -108,3 +110,12 @@ development_status:
   8-5-system-prompt-update-for-cross-referencing: done
   8-6-rag-test-suite: done
   epic-8-retrospective: optional
+
+  # Epic 9: Citation UI & Journalist Export
+  # Implementation order: after Epic 3
+  # Depends on: Epic 3 Story 3.2 (Citation Registry Pipeline)
+  epic-9: backlog
+  9-1-citation-registry-rendering-in-chat-ui: backlog
+  9-2-copy-with-citations: backlog
+  9-3-source-verification-links: backlog
+  epic-9-retrospective: optional

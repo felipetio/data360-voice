@@ -123,7 +123,9 @@ data360-voice/
 ├── app/                  # Web application
 │   ├── __init__.py
 │   ├── main.py           # FastAPI app + Chainlit mount
-│   ├── chat.py           # Chainlit handlers (@cl.on_message, etc.)
+│   ├── chat.py           # Chainlit handlers (@cl.on_message, agentic loop)
+│   ├── citations.py      # Citation registry pipeline (extraction, dedup, formatting)
+│   ├── prompts.py        # System prompt for LLM grounding and citation markers
 │   └── config.py         # Settings and environment variables
 ├── db/                   # PostgreSQL init scripts
 │   ├── 001_chainlit_schema.sql
@@ -542,7 +544,8 @@ data360api.worldbank.org
 | FR Category | Primary Location | Key Files |
 |------------|-----------------|-----------|
 | Data Query & Retrieval (FR1-7) | `mcp_server/` | `server.py` (search_indicators, get_data), `data360_client.py` |
-| Citation & Source Attribution (FR8-12) | `mcp_server/` | `data360_client.py` (preserves DATA_SOURCE), `server.py` (response format) |
+| Citation & Source Attribution (FR8-12) | `mcp_server/` + `app/` | `data360_client.py` (CITATION_SOURCE enrichment), `app/citations.py` (registry pipeline: extraction, dedup, formatting), `app/prompts.py` (LLM marker instructions) |
+| Citation UI & Journalist Export (FR57-59) | `app/` | `app/chat.py` (metadata attachment), Chainlit custom elements (tooltips, copy, deep links) |
 | Narrative Response Generation (FR13-17) | `app/` | `chat.py` (system prompt with grounding rules) |
 | LLM Grounding & Trust (FR18-22) | `app/` | `chat.py` (system prompt constraints) |
 | Fact-Check Mode (FR23-26) | `app/` | `chat.py` (prompt engineering for verdict generation) |
