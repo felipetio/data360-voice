@@ -29,6 +29,7 @@ async def lifespan(app: FastAPI):
 
         if _app_db.pool is not None:
             await _app_db.pool.close()
+            _app_db.pool = None
             logger.info("asyncpg pool closed")
 
 

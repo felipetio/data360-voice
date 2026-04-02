@@ -31,7 +31,7 @@ So that I can add context to my conversations without extra steps.
 
 **AC7:** Given `DATA360_RAG_ENABLED=false`, when a user attaches a file, then `message.elements` is not inspected for upload processing; file attachments are silently ignored (standard Chainlit element handling) and only the text portion of the message is processed.
 
-**AC8:** Given `process_upload()` from `mcp_server/rag/processor.py`, when called from `app/chat.py`, then it receives: `path` (the uploaded file's temporary path as a `str`), `filename` (original filename), `mime_type`, and a live asyncpg connection acquired from the shared `app.db.pool`.
+**AC8:** Given `process_upload()` from `mcp_server/rag/processor.py`, when called from `app/chat.py`, then it receives: `file_bytes` (the uploaded file contents as `bytes`, read via `asyncio.to_thread`), `filename` (original filename), `mime_type`, and a live asyncpg connection acquired from the shared `app.db.pool`.
 
 **AC9:** Given the upload handling code, when `DATA360_RAG_ENABLED=true` but no asyncpg pool is available (pool is `None`), then the user sees `"❌ RAG database is not available. Upload cannot be processed."` and processing is skipped.
 

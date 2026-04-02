@@ -77,15 +77,12 @@ class TestConfigSettings:
         )
         assert s.rag_max_upload_mb == 20
 
-    def test_rag_enabled_defaults_false(self):
-        """RAG is off by default."""
+    def test_rag_enabled_field_default_is_false(self):
+        """RAG field default is False (env vars and .env may override at runtime)."""
         from app.config import Settings
 
-        s = Settings(
-            anthropic_api_key="test-key",
-            database_url="postgresql://localhost/test",
-        )
-        assert s.rag_enabled is False
+        field = Settings.model_fields["rag_enabled"]
+        assert field.default is False
 
 
 # ---------------------------------------------------------------------------
@@ -100,9 +97,6 @@ class TestMimeTypeFilter:
         el = _make_file_element(name="photo.png", mime="image/png")
         sent_messages = []
 
-        msg_mock = AsyncMock()
-        msg_mock.send = AsyncMock(side_effect=lambda: sent_messages.append(msg_mock.content))
-
         with (
             patch("app.chat.cl.Message", side_effect=lambda content: _capture_msg(content, sent_messages)),
             patch("app.chat.settings") as mock_settings,
@@ -113,7 +107,7 @@ class TestMimeTypeFilter:
 
             result = await _process_upload_element(el)
 
-        assert result is False
+        assert result is not None and result.startswith("ERROR:")
         assert any("Unsupported file type" in m for m in sent_messages)
 
     @pytest.mark.asyncio
@@ -138,7 +132,7 @@ class TestMimeTypeFilter:
 
             result = await _process_upload_element(el)
 
-        assert result is True
+        assert result is not None and not result.startswith("ERROR:")
 
     @pytest.mark.asyncio
     async def test_txt_accepted(self):
@@ -162,7 +156,7 @@ class TestMimeTypeFilter:
 
             result = await _process_upload_element(el)
 
-        assert result is True
+        assert result is not None and not result.startswith("ERROR:")
 
     @pytest.mark.asyncio
     async def test_csv_accepted(self):
@@ -186,7 +180,7 @@ class TestMimeTypeFilter:
 
             result = await _process_upload_element(el)
 
-        assert result is True
+        assert result is not None and not result.startswith("ERROR:")
 
     @pytest.mark.asyncio
     async def test_markdown_accepted(self):
@@ -210,7 +204,7 @@ class TestMimeTypeFilter:
 
             result = await _process_upload_element(el)
 
-        assert result is True
+        assert result is not None and not result.startswith("ERROR:")
 
 
 # ---------------------------------------------------------------------------
@@ -237,7 +231,7 @@ class TestSizeLimit:
 
             result = await _process_upload_element(el)
 
-        assert result is False
+        assert result is not None and result.startswith("ERROR:")
         assert any("too large" in m.lower() or "MB" in m for m in sent_messages)
 
     @pytest.mark.asyncio
@@ -263,7 +257,7 @@ class TestSizeLimit:
 
             result = await _process_upload_element(el)
 
-        assert result is True
+        assert result is not None and not result.startswith("ERROR:")
 
 
 # ---------------------------------------------------------------------------
@@ -295,7 +289,7 @@ class TestStatusMessages:
 
             result = await _process_upload_element(el)
 
-        assert result is True
+        assert result is not None and not result.startswith("ERROR:")
         assert any("Processing" in m for m in sent_messages), f"Missing processing msg. Got: {sent_messages}"
         assert any("ready for search" in m for m in sent_messages), f"Missing ready msg. Got: {sent_messages}"
         assert any("7 chunks" in m for m in sent_messages), f"Missing chunk count. Got: {sent_messages}"
@@ -309,7 +303,7 @@ class TestStatusMessages:
 class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_process_upload_exception_handled(self):
-        """AC6: Exception from process_upload returns False and sends error message."""
+        """AC6: Exception from process_upload returns ERROR string and sends error message."""
         el = _make_file_element()
         mock_pool, mock_conn = _make_pool_mock()
         _app_db.pool = mock_pool
@@ -329,11 +323,11 @@ class TestErrorHandling:
 
             result = await _process_upload_element(el)
 
-        assert result is False
+        assert result is not None and result.startswith("ERROR:")
 
     @pytest.mark.asyncio
     async def test_process_upload_structured_error_handled(self):
-        """AC6: Structured error dict from process_upload returns False with error message."""
+        """AC6: Structured error dict from process_upload returns ERROR string with error message."""
         el = _make_file_element()
         sent_messages = []
         mock_pool, mock_conn = _make_pool_mock()
@@ -354,7 +348,7 @@ class TestErrorHandling:
 
             result = await _process_upload_element(el)
 
-        assert result is False
+        assert result is not None and result.startswith("ERROR:")
         assert any("Failed to process" in m or "Corrupt PDF" in m for m in sent_messages)
 
 
@@ -388,6 +382,38 @@ class TestRagDisabled:
             await on_message(mock_message)
 
         mock_process.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Attachment-only message (no text content) — agentic loop must be skipped
+# ---------------------------------------------------------------------------
+
+
+class TestAttachmentOnlyMessage:
+    @pytest.mark.asyncio
+    async def test_empty_content_skips_agentic_loop(self):
+        """on_message with elements but no text content must NOT call _agentic_loop."""
+        el = _make_file_element()
+        mock_message = MagicMock()
+        mock_message.content = ""  # attachment-only, no text
+        mock_message.elements = [el]
+
+        with (
+            patch("app.chat.settings") as mock_settings,
+            patch("app.chat._process_upload_element", new_callable=AsyncMock, return_value="ctx"),
+            patch("app.chat.cl.Message", return_value=AsyncMock()),
+            patch("app.chat.cl.user_session") as session_mock,
+            patch("app.chat._agentic_loop", new_callable=AsyncMock) as mock_loop,
+        ):
+            mock_settings.rag_enabled = True
+            mock_settings.conversation_history_limit = 10
+            session_mock.get = MagicMock(return_value=[])
+
+            from app.chat import on_message
+
+            await on_message(mock_message)
+
+        mock_loop.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -435,7 +461,7 @@ class TestProcessUploadArgs:
 class TestPoolUnavailable:
     @pytest.mark.asyncio
     async def test_upload_skipped_when_pool_none(self):
-        """AC9: When db pool is None, upload returns False with error message."""
+        """AC9: When db pool is None, upload returns ERROR string with error message."""
         el = _make_file_element()
         _app_db.pool = None  # explicitly None
         sent_messages = []
@@ -451,7 +477,7 @@ class TestPoolUnavailable:
 
             result = await _process_upload_element(el)
 
-        assert result is False
+        assert result is not None and result.startswith("ERROR:")
         assert any("RAG database is not available" in m for m in sent_messages)
 
 

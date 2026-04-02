@@ -100,7 +100,12 @@ async def _process_upload_element(element: cl.File) -> str | None:  # type: igno
     # --- Processing ---
     await cl.Message(content="⏳ Processing document...").send()
     try:
-        file_bytes = await asyncio.to_thread(lambda: open(file_path, "rb").read())  # noqa: ASYNC230, WPS515
+
+        def _read_file() -> bytes:
+            with open(file_path, "rb") as fh:  # noqa: ASYNC230
+                return fh.read()
+
+        file_bytes = await asyncio.to_thread(_read_file)
         async with _app_db.pool.acquire() as conn:
             result = await process_upload(
                 conn=conn,
