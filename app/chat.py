@@ -12,7 +12,7 @@ from mcp.client.streamable_http import streamablehttp_client
 
 import app.data  # noqa: F401  # registers Chainlit data layer
 from app.config import settings
-from app.prompts import SYSTEM_PROMPT
+from app.prompts import get_system_prompt
 
 # ---------------------------------------------------------------------------
 # RAG upload constants (used only when DATA360_RAG_ENABLED=true)
@@ -398,7 +398,7 @@ async def _agentic_loop(
     call_kwargs: dict[str, Any] = {
         "model": settings.claude_model,
         "max_tokens": settings.claude_max_tokens,
-        "system": SYSTEM_PROMPT,
+        "system": get_system_prompt(rag_enabled=settings.rag_enabled),
     }
     if tools:
         call_kwargs["tools"] = tools
