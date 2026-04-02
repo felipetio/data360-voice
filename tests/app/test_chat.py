@@ -208,8 +208,8 @@ class TestStreamingResponse:
         assert len(captured_messages) <= limit
 
     async def test_system_prompt_included_in_every_call(self, reload_chat):
-        """system=SYSTEM_PROMPT must be present in every API call."""
-        from app.prompts import SYSTEM_PROMPT
+        """system prompt must be present in every API call (uses get_system_prompt)."""
+        from app.prompts import get_system_prompt
 
         tokens = ["response"]
         msg_mock = _make_fake_cl_message()
@@ -223,7 +223,13 @@ class TestStreamingResponse:
             patch("app.chat.cl.Message", return_value=msg_mock),
             patch("app.chat.cl.user_session") as session_mock,
             patch("app.chat.client.messages.stream", side_effect=fake_stream),
+            patch("app.chat.settings") as settings_mock,
         ):
+            settings_mock.rag_enabled = False
+            settings_mock.claude_model = "claude-3-5-sonnet-20241022"
+            settings_mock.claude_max_tokens = 4096
+            settings_mock.max_tool_rounds = 20
+            settings_mock.conversation_history_limit = 10
             session_mock.get.return_value = []
             session_mock.set = MagicMock()
 
@@ -232,7 +238,7 @@ class TestStreamingResponse:
 
             await reload_chat.on_message(incoming)
 
-        assert captured_call_args.get("system") == SYSTEM_PROMPT
+        assert captured_call_args.get("system") == get_system_prompt(rag_enabled=False)
 
     async def test_conversation_history_passed_to_api(self, reload_chat):
         """Prior conversation turns are included in the messages list."""
