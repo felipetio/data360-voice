@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -12,6 +13,17 @@ from mcp.client.streamable_http import streamablehttp_client
 import app.data  # noqa: F401  # registers Chainlit data layer
 from app.config import settings
 from app.prompts import SYSTEM_PROMPT
+
+# ---------------------------------------------------------------------------
+# RAG upload constants (used only when DATA360_RAG_ENABLED=true)
+# ---------------------------------------------------------------------------
+
+_ACCEPTED_MIME_TYPES = {
+    "application/pdf",
+    "text/plain",
+    "text/markdown",
+    "text/csv",
+}
 
 # ---------------------------------------------------------------------------
 # Authentication
@@ -36,6 +48,83 @@ def auth_callback(username: str, password: str):
 
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# RAG upload helper
+# ---------------------------------------------------------------------------
+
+
+async def _process_upload_element(element: cl.File) -> bool:  # type: ignore[name-defined]
+    """Process a single uploaded file element via the RAG pipeline.
+
+    Sends status messages to the user and calls process_upload().
+    Returns True if processing succeeded (or was skipped gracefully),
+    False if a fatal error occurred that should abort the upload.
+
+    This function is only called when DATA360_RAG_ENABLED=true.
+    """
+    # Lazy imports — avoids loading asyncpg / sentence-transformers when RAG is off.
+    import app.db as _app_db  # noqa: PLC0415
+    from mcp_server.rag.processor import process_upload  # noqa: PLC0415
+
+    filename = element.name or "uploaded_file"
+    mime_type = element.mime or ""
+    file_path = element.path  # Chainlit writes the file to a temp path
+
+    # --- MIME type check ---
+    if mime_type not in _ACCEPTED_MIME_TYPES:
+        await cl.Message(
+            content=f"⚠️ Unsupported file type '{mime_type}'. Please upload a PDF, TXT, MD, or CSV file."
+        ).send()
+        return False
+
+    # --- Size check ---
+    limit_mb = settings.rag_max_upload_mb
+    try:
+        size_bytes = os.path.getsize(file_path)
+    except OSError:
+        size_bytes = 0
+    size_mb = size_bytes / (1024 * 1024)
+    if size_mb > limit_mb:
+        await cl.Message(
+            content=(f"⚠️ File '{filename}' is too large ({size_mb:.1f} MB). Maximum allowed size is {limit_mb} MB.")
+        ).send()
+        return False
+
+    # --- Pool availability check ---
+    if _app_db.pool is None:
+        await cl.Message(content="❌ RAG database is not available. Upload cannot be processed.").send()
+        return False
+
+    # --- Processing ---
+    await cl.Message(content="⏳ Processing document...").send()
+    try:
+        file_bytes = await asyncio.to_thread(lambda: open(file_path, "rb").read())  # noqa: ASYNC230, WPS515
+        async with _app_db.pool.acquire() as conn:
+            result = await process_upload(
+                conn=conn,
+                filename=filename,
+                mime_type=mime_type,
+                file_bytes=file_bytes,
+            )
+
+        if isinstance(result, dict) and not result.get("success", True):
+            error_msg = result.get("error", "Unknown error")
+            await cl.Message(content=f"❌ Failed to process document: {error_msg}.").send()
+            return False
+
+        n_chunks = result.get("chunk_count", "?") if isinstance(result, dict) else "?"
+        await cl.Message(
+            content=f"✅ Document ready for search ({n_chunks} chunks). You can now ask questions about it."
+        ).send()
+        return True
+
+    except Exception as exc:
+        logger.error("Upload processing failed for '%s': %s", filename, exc)
+        await cl.Message(content=f"❌ Failed to process document: {exc}.").send()
+        return False
+
 
 # MCP session key used in cl.user_session
 _MCP_SESSION_KEY = "mcp_session"
@@ -211,6 +300,15 @@ async def on_chat_end():
 
 @cl.on_message
 async def on_message(message: cl.Message):
+    # --- RAG upload handling (only when RAG is enabled) ---
+    if settings.rag_enabled and message.elements:
+        for element in message.elements:
+            if isinstance(element, cl.File):
+                await _process_upload_element(element)
+        # If message has ONLY attachments and no text, skip the agentic loop
+        if not message.content.strip():
+            return
+
     # Retrieve conversation history and append new user turn
     history = cl.user_session.get("history", [])
     history.append({"role": "user", "content": message.content})
