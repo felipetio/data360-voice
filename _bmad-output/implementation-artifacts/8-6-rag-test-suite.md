@@ -1,6 +1,6 @@
 # Story 8.6: RAG Test Suite
 
-**Status:** review
+**Status:** done
 **Epic:** 8 — Document Upload & RAG Search
 **Story Key:** 8-6-rag-test-suite
 **Created:** 2026-04-02
