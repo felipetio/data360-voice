@@ -70,10 +70,11 @@ class TestGroundingBoundary:
         assert "[2]" in result
         assert "marker" in result.lower()
 
-    def test_base_prompt_no_reference_list_generation(self):
-        """AC6: LLM is told NOT to generate reference list."""
+    def test_base_prompt_includes_reference_list_instructions(self):
+        """AC6: LLM is told to append a numbered reference list."""
         result = get_system_prompt(rag_enabled=False)
-        assert "Do not generate a reference list" in result
+        assert "reference list" in result.lower()
+        assert "CITATION_SOURCE" in result
 
     def test_base_prompt_grounding_boundary_causation(self):
         """AC3: Causation constraint is explicit."""
@@ -91,11 +92,9 @@ class TestGroundingBoundary:
         assert "reuse" in result.lower()
         assert "same" in result.lower()
 
-    def test_no_inline_citation_format(self):
-        """AC5/AC6: Old citation instruction 'Example: (Source: ...)' removed from prompt."""
+    def test_no_old_inline_citation_format(self):
+        """AC5: Old citation instruction 'Example: (Source: ...)' removed from prompt."""
         result = get_system_prompt(rag_enabled=False)
-        # The old instruction told Claude to USE (Source: ...) — that's gone.
-        # The new prompt mentions it only to say "do not use" it.
         assert 'Example: "(Source:' not in result
 
     def test_rag_document_section_uses_numbered_markers(self):

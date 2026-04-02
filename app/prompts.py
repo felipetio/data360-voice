@@ -40,9 +40,12 @@ _BASE_SYSTEM_PROMPT = (
     "(same database + indicator combination) again.\n"
     "- Example: 'Brazil emitted 467,000 kt of CO2 in 2022 [1], "
     "while India emitted 2,693,000 kt [2].'\n"
-    "- A reference list will be appended automatically by the system. "
-    "Do not generate a reference list yourself.\n"
-    "- Do not use inline citation formats like '(Source: ...)'.\n\n"
+    "- After the narrative, append a numbered reference list matching the markers.\n"
+    "- Format each entry as: '[n] Source Name, \"Indicator Name\" (INDICATOR_CODE), YEAR(s).'\n"
+    "- Use the CITATION_SOURCE field value as the source name.\n"
+    "- Example reference list:\n"
+    '  [1] World Development Indicators, "CO2 emissions, total (kt)" (EN.ATM.CO2E.KT), 2015-2022.\n'
+    '  [2] Health Nutrition and Population Statistics, "Life expectancy" (SP.DYN.LE00.IN), 2021.\n\n'
     "STYLE:\n"
     "- Be concise and factual. Prefer short paragraphs over bullet lists for narrative responses.\n"
     "- Avoid raw tables by default; describe data values in human-readable narrative form.\n"
