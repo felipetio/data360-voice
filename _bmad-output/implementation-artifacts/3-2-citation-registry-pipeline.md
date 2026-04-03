@@ -1,6 +1,6 @@
 # Story 3.2: Citation Registry Pipeline
 
-**Status:** ready-for-dev
+**Status:** review
 **Epic:** 3 — Trust, Citations & LLM Grounding
 **Story Key:** 3-2-citation-registry-pipeline
 **Created:** 2026-04-02

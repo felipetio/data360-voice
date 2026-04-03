@@ -7,6 +7,7 @@ this module builds the reference list that explains what each marker means.
 
 import json
 import logging
+from collections.abc import Sequence
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,7 @@ def _collapse_years(years: list[int]) -> str:
     return ", ".join(ranges)
 
 
-def extract_references(tool_outputs: list[str]) -> list[dict[str, Any]]:
+def extract_references(tool_outputs: Sequence[str | None]) -> list[dict[str, Any]]:
     """Extract raw citation data from MCP tool result strings.
 
     Parses each tool output as JSON and looks for ``data`` arrays containing
@@ -52,7 +53,8 @@ def extract_references(tool_outputs: list[str]) -> list[dict[str, Any]]:
     reference dicts (not yet deduplicated).
 
     Args:
-        tool_outputs: Raw string outputs from MCP tool calls.
+        tool_outputs: Raw string outputs from MCP tool calls. ``None`` entries
+            are silently skipped.
 
     Returns:
         List of dicts, each with keys like ``source``, ``indicator_code``,
@@ -145,7 +147,7 @@ def deduplicate_references(raw_refs: list[dict[str, Any]]) -> list[dict[str, Any
 
     for ref in raw_refs:
         if ref["type"] == "document":
-            key = ("doc", ref.get("filename", ""), str(ref.get("page", "")), str(ref.get("chunk", "")))
+            key = ("doc", ref.get("filename", ""), str(ref.get("page", "")))
         else:
             key = ("api", ref["database_id"], ref["indicator_code"])
 
