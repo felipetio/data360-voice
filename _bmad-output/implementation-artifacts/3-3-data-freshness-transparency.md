@@ -1,6 +1,6 @@
 # Story 3.3: Data Freshness Transparency
 
-**Status:** review
+**Status:** done
 **Epic:** 3 — Trust, Citations & LLM Grounding
 **Story Key:** 3-3-data-freshness-transparency
 **Created:** 2026-04-03
