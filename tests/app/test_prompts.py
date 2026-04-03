@@ -54,10 +54,10 @@ class TestGetSystemPrompt:
         assert result == SYSTEM_PROMPT
 
     def test_system_prompt_backward_compat_alias(self):
-        """SYSTEM_PROMPT constant still importable and equals the base prompt."""
+        """SYSTEM_PROMPT constant still importable and equals base prompt with default threshold."""
         from app.prompts import SYSTEM_PROMPT as sp
 
-        assert sp == get_system_prompt(rag_enabled=False)
+        assert sp == get_system_prompt(rag_enabled=False, staleness_threshold_years=2)
 
 
 class TestGroundingBoundary:
@@ -71,10 +71,11 @@ class TestGroundingBoundary:
         assert "marker" in result.lower()
 
     def test_base_prompt_includes_reference_list_instructions(self):
-        """AC6: LLM is told to append a numbered reference list."""
+        """AC6: LLM is told about the reference list (system appends it automatically)."""
         result = get_system_prompt(rag_enabled=False)
         assert "reference list" in result.lower()
-        assert "CITATION_SOURCE" in result
+        # Since story 3.2, the system appends the reference list; the prompt tells Claude not to generate one
+        assert "appended automatically by the system" in result
 
     def test_base_prompt_grounding_boundary_causation(self):
         """AC3: Causation constraint is explicit."""
@@ -103,3 +104,62 @@ class TestGroundingBoundary:
         # The document section should reference [n] markers
         assert "[n]" in result
         assert "Do not construct citations manually" in result
+
+
+class TestDataFreshnessTransparency:
+    """Story 3.3: Data freshness transparency instructions in system prompt."""
+
+    def test_base_prompt_contains_data_freshness_section(self):
+        """AC5: DATA FRESHNESS section present in base prompt."""
+        result = get_system_prompt()
+        assert "DATA FRESHNESS" in result
+
+    def test_default_staleness_threshold_is_two_years(self):
+        """AC6: Default staleness threshold is 2 years."""
+        result = get_system_prompt()
+        assert "2 years" in result
+
+    def test_custom_staleness_threshold_injected(self):
+        """AC6: Custom threshold is injected correctly."""
+        result = get_system_prompt(staleness_threshold_years=3)
+        assert "3 years" in result
+        assert "{staleness_threshold}" not in result
+
+    def test_no_placeholder_in_default_prompt(self):
+        """Ensure placeholder is always resolved, never left raw."""
+        result = get_system_prompt()
+        assert "{staleness_threshold}" not in result
+
+    def test_system_prompt_alias_resolves_placeholder(self):
+        """SYSTEM_PROMPT alias must have resolved placeholder."""
+        assert "{staleness_threshold}" not in SYSTEM_PROMPT
+        assert "2 years" in SYSTEM_PROMPT
+
+    def test_freshness_does_not_mandate_year_on_every_sentence(self):
+        """AC1 refined: Prompt does NOT mandate year annotation on every sentence."""
+        result = get_system_prompt()
+        # The old over-eager instruction is gone
+        assert "for every data claim, include the year inline" not in result.lower()
+        # But the section is still present
+        assert "DATA FRESHNESS" in result
+
+    def test_freshness_includes_staleness_warning_instruction(self):
+        """AC2: Prompt instructs Claude to warn about stale data."""
+        result = get_system_prompt()
+        assert "staleness" in result.lower() or "stale" in result.lower() or "warning" in result.lower()
+
+    def test_freshness_includes_multi_country_recency_instruction(self):
+        """AC3: Prompt instructs Claude to flag year discrepancies in multi-country comparisons."""
+        result = get_system_prompt()
+        assert "multi-country" in result.lower() or "discrepancy" in result.lower() or "differ" in result.lower()
+
+    def test_rag_prompt_also_has_data_freshness(self):
+        """DATA FRESHNESS section present even when RAG is enabled."""
+        result = get_system_prompt(rag_enabled=True)
+        assert "DATA FRESHNESS" in result
+
+    def test_system_appends_reference_list_instruction_present(self):
+        """AC5: Prompt tells Claude that reference list is appended automatically."""
+        result = get_system_prompt()
+        assert "appended automatically by the system" in result
+        assert "Do not generate a reference list yourself" in result

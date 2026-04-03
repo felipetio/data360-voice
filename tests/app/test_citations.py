@@ -4,6 +4,8 @@ import json
 
 from app.citations import (
     _collapse_years,
+    _parse_time_period_year,
+    _parse_time_period_years,
     deduplicate_references,
     extract_references,
     format_reference_list,
@@ -426,3 +428,95 @@ class TestFormatReferenceList:
         result = format_reference_list(refs)
         assert "[1]" in result
         assert "[2]" in result
+
+
+class TestParseTimePeriodYear:
+    """Story 3.3 AC4: TIME_PERIOD parsing handles all Data360 API formats."""
+
+    def test_simple_year(self):
+        """Plain year string."""
+        assert _parse_time_period_year("2022") == 2022
+
+    def test_integer_input(self):
+        """Integer year input."""
+        assert _parse_time_period_year(2022) == 2022
+
+    def test_quarter_notation(self):
+        """Quarter notation: first 4 chars are the year."""
+        assert _parse_time_period_year("2022Q1") == 2022
+        assert _parse_time_period_year("2019Q3") == 2019
+
+    def test_range_string_returns_start_year(self):
+        """Range string: returns start year."""
+        assert _parse_time_period_year("2015-2022") == 2015
+
+    def test_none_returns_none(self):
+        assert _parse_time_period_year(None) is None
+
+    def test_invalid_returns_none(self):
+        assert _parse_time_period_year("invalid") is None
+        assert _parse_time_period_year("") is None
+
+
+class TestParseTimePeriodYears:
+    """Story 3.3 AC4: Multi-year extraction from TIME_PERIOD range strings."""
+
+    def test_simple_year_returns_single_element_list(self):
+        assert _parse_time_period_years("2022") == [2022]
+
+    def test_quarter_notation_returns_single_year(self):
+        assert _parse_time_period_years("2022Q1") == [2022]
+
+    def test_range_string_returns_all_years(self):
+        """Range string expands to full year list."""
+        result = _parse_time_period_years("2015-2022")
+        assert result == list(range(2015, 2023))
+
+    def test_none_returns_empty_list(self):
+        assert _parse_time_period_years(None) == []
+
+    def test_invalid_returns_empty_list(self):
+        assert _parse_time_period_years("invalid") == []
+
+
+class TestExtractReferencesTimePeriod:
+    """Story 3.3 AC4: TIME_PERIOD edge cases in extract_references."""
+
+    def _make_record(self, time_period: str) -> dict:
+        return {
+            "OBS_VALUE": "100",
+            "INDICATOR": "WB_WDI_A",
+            "DATABASE_ID": "WB_WDI",
+            "TIME_PERIOD": time_period,
+            "CITATION_SOURCE": "World Development Indicators",
+            "REF_AREA": "BRA",
+            "COMMENT_TS": "Some Indicator",
+        }
+
+    def _make_output(self, records: list) -> str:
+        import json
+
+        return json.dumps({"success": True, "data": records, "total_count": len(records)})
+
+    def test_quarter_time_period_parsed(self):
+        """Quarter notation TIME_PERIOD is parsed correctly."""
+        output = self._make_output([self._make_record("2022Q1")])
+        refs = extract_references([output])
+        assert len(refs) == 1
+        assert refs[0]["year"] == 2022
+
+    def test_range_time_period_expands_years(self):
+        """Range TIME_PERIOD creates multiple years in the ref."""
+        output = self._make_output([self._make_record("2015-2022")])
+        refs = extract_references([output])
+        assert len(refs) == 1
+        # years list should contain all years in range
+        assert refs[0]["years"] == list(range(2015, 2023))
+
+    def test_range_time_period_deduplicates_to_collapsed_range(self):
+        """After deduplication, range TIME_PERIOD collapses correctly."""
+        output = self._make_output([self._make_record("2015-2022")])
+        refs = extract_references([output])
+        deduped = deduplicate_references(refs)
+        assert len(deduped) == 1
+        assert deduped[0]["years"] == "2015-2022"

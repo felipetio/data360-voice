@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     rag_max_upload_mb: int = Field(
         default=20, ge=1, alias="data360_rag_max_upload_mb", validation_alias="DATA360_RAG_MAX_UPLOAD_MB"
     )
+    staleness_threshold_years: int = Field(
+        default=2, ge=1, alias="data360_staleness_threshold_years", validation_alias="DATA360_STALENESS_THRESHOLD_YEARS"
+    )
 
 
 settings = Settings()
