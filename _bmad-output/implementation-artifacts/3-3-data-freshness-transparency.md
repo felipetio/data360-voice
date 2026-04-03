@@ -56,7 +56,7 @@ So that I understand the recency of the information I'm using.
 
 - [x] `tests/app/test_prompts.py` — `TestDataFreshnessTransparency` class with 10 tests covering DATA FRESHNESS section presence, threshold injection, default threshold, SYSTEM_PROMPT alias resolution, individual instruction checks.
 - [x] `tests/app/test_citations.py` — added `TestParseTimePeriodYear`, `TestParseTimePeriodYears`, `TestExtractReferencesTimePeriod` classes for TIME_PERIOD edge cases.
-- [x] Full test suite: `uv run pytest` — 306/306 passing.
+- [x] Full test suite: `uv run pytest` — 339/339 passing.
 
 ---
 
@@ -121,14 +121,14 @@ claude-sonnet-4-6 (anthropic)
 
 - Previous session implemented all tasks (commit f376fd5)
 - PR #38 was opened but closed without merge — reopened as new PR
-- All 306 tests pass; ruff clean
+- All 339 tests pass; ruff clean
 
 ### Completion Notes List
 
 - ✅ Task 1: Added DATA FRESHNESS section to `_BASE_SYSTEM_PROMPT` with inline year and staleness warning instructions. `get_system_prompt()` now accepts `staleness_threshold_years` param with dynamic `{staleness_threshold}` placeholder injection.
 - ✅ Task 2: Added `staleness_threshold_years` field to `Settings` (env: `DATA360_STALENESS_THRESHOLD_YEARS`, default: 2). `app/chat.py` passes value to `get_system_prompt()`.
 - ✅ Task 3: Added `_parse_time_period_year()` and `_parse_time_period_years()` helpers in `app/citations.py` to handle plain year, quarter notation (`2022Q1`), and range strings (`2015-2022`). `extract_references` now uses these helpers.
-- ✅ Task 4: 22 new tests added — `TestDataFreshnessTransparency` (10 tests in test_prompts.py), `TestParseTimePeriodYear` (4), `TestParseTimePeriodYears` (4), `TestExtractReferencesTimePeriod` (4 in test_citations.py). 306/306 pass.
+- ✅ Task 4: 22 new tests added — `TestDataFreshnessTransparency` (10 tests in test_prompts.py), `TestParseTimePeriodYear` (4), `TestParseTimePeriodYears` (4), `TestExtractReferencesTimePeriod` (4 in test_citations.py). 339/339 pass.
 - ✅ Code review: ruff clean, no lint issues.
 
 ### File List
@@ -144,4 +144,4 @@ claude-sonnet-4-6 (anthropic)
 
 ### Change Log
 
-- 2026-04-03: Implemented data freshness transparency — DATA FRESHNESS system prompt section, configurable staleness threshold, TIME_PERIOD parsing improvements, 22 new tests (306 total passing)
+- 2026-04-03: Implemented data freshness transparency — DATA FRESHNESS system prompt section, configurable staleness threshold, TIME_PERIOD parsing improvements, 22 new tests (339 total passing)
