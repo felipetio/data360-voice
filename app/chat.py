@@ -11,6 +11,7 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
 import app.data  # noqa: F401  # registers Chainlit data layer
+from app.citations import deduplicate_references, extract_references, format_reference_list
 from app.config import settings
 from app.prompts import get_system_prompt
 
@@ -405,6 +406,7 @@ async def _agentic_loop(
 
     max_rounds = settings.max_tool_rounds
     tool_round = 0
+    all_tool_outputs: list[str] = []
 
     while True:
         tool_round += 1
@@ -427,7 +429,19 @@ async def _agentic_loop(
         stop_reason = final_message.stop_reason
 
         if stop_reason != "tool_use":
-            return "".join(tokens)
+            final_text = "".join(tokens)
+
+            # Build deterministic citation registry from collected tool outputs (AC1/AC3/AC7/AC8)
+            raw_refs = extract_references(all_tool_outputs)
+            if raw_refs:
+                refs = deduplicate_references(raw_refs)
+                ref_block = "\n\n" + format_reference_list(refs)
+                await msg.stream_token(ref_block)
+                final_text += ref_block
+                # Attach structured references to message metadata for Epic 9 UI (AC7)
+                msg.metadata = {"references": refs}
+
+            return final_text
 
         # Reset the UI message for the next iteration so intermediate
         # "thinking" text from tool-use rounds doesn't leak to the user.
@@ -466,6 +480,7 @@ async def _agentic_loop(
                     )
 
                 step.output = tool_output[:500] + "…" if len(tool_output) > 500 else tool_output
+                all_tool_outputs.append(tool_output)
 
             tool_results.append(
                 {

@@ -1,0 +1,428 @@
+"""Tests for the citation registry pipeline (Story 3.2)."""
+
+import json
+
+from app.citations import (
+    _collapse_years,
+    deduplicate_references,
+    extract_references,
+    format_reference_list,
+)
+
+
+class TestCollapseYears:
+    """Unit tests for year range collapsing."""
+
+    def test_consecutive_years(self):
+        assert _collapse_years([2015, 2016, 2017]) == "2015-2017"
+
+    def test_single_year(self):
+        assert _collapse_years([2022]) == "2022"
+
+    def test_empty_list(self):
+        assert _collapse_years([]) == ""
+
+    def test_mixed_ranges_and_singles(self):
+        assert _collapse_years([2015, 2016, 2017, 2020, 2022]) == "2015-2017, 2020, 2022"
+
+    def test_all_separate(self):
+        assert _collapse_years([2010, 2015, 2020]) == "2010, 2015, 2020"
+
+    def test_duplicates_removed(self):
+        assert _collapse_years([2020, 2020, 2021]) == "2020-2021"
+
+    def test_unsorted_input(self):
+        assert _collapse_years([2022, 2020, 2021]) == "2020-2022"
+
+
+class TestExtractReferences:
+    """AC1: Extract citation data from tool result strings."""
+
+    def _make_tool_output(self, data: list | None = None, success: bool = True) -> str:
+        result: dict = {"success": success}
+        if data is not None:
+            result["data"] = data
+            result["total_count"] = len(data)
+            result["returned_count"] = len(data)
+            result["truncated"] = False
+        return json.dumps(result)
+
+    def test_extracts_api_refs_from_valid_data(self):
+        """AC1: Extracts references from get_data results."""
+        data = [
+            {
+                "OBS_VALUE": "467000",
+                "INDICATOR": "WB_WDI_EN_ATM_CO2E_KT",
+                "DATABASE_ID": "WB_WDI",
+                "TIME_PERIOD": "2022",
+                "CITATION_SOURCE": "World Development Indicators",
+                "REF_AREA": "BRA",
+                "COMMENT_TS": "CO2 emissions, total (kt)",
+            }
+        ]
+        output = self._make_tool_output(data)
+        refs = extract_references([output])
+        assert len(refs) == 1
+        assert refs[0]["source"] == "World Development Indicators"
+        assert refs[0]["indicator_code"] == "EN_ATM_CO2E_KT"
+        assert refs[0]["database_id"] == "WB_WDI"
+        assert refs[0]["year"] == 2022
+        assert refs[0]["type"] == "api"
+
+    def test_strips_database_prefix_from_indicator(self):
+        """Indicator code WB_WDI_EN_ATM_CO2E_KT → EN_ATM_CO2E_KT."""
+        data = [
+            {
+                "INDICATOR": "WB_WDI_EN_ATM_CO2E_KT",
+                "DATABASE_ID": "WB_WDI",
+                "TIME_PERIOD": "2020",
+                "CITATION_SOURCE": "WDI",
+            }
+        ]
+        refs = extract_references([self._make_tool_output(data)])
+        assert refs[0]["indicator_code"] == "EN_ATM_CO2E_KT"
+
+    def test_returns_empty_for_error_response(self):
+        """Error responses produce no references."""
+        output = self._make_tool_output(success=False)
+        refs = extract_references([output])
+        assert refs == []
+
+    def test_returns_empty_for_non_json(self):
+        """Non-JSON strings produce no references."""
+        refs = extract_references(["not json at all"])
+        assert refs == []
+
+    def test_returns_empty_for_empty_data(self):
+        """Empty data array produces no references."""
+        output = self._make_tool_output(data=[])
+        refs = extract_references([output])
+        assert refs == []
+
+    def test_skips_records_without_citation_source(self):
+        """Records missing CITATION_SOURCE are ignored."""
+        data = [{"OBS_VALUE": "100", "INDICATOR": "X", "DATABASE_ID": "Y"}]
+        refs = extract_references([self._make_tool_output(data)])
+        assert refs == []
+
+    def test_extracts_document_refs(self):
+        """Document-type results with page_number are detected."""
+        data = [
+            {
+                "content": "some text",
+                "source": "report.pdf",
+                "page_number": 12,
+                "similarity_score": 0.85,
+                "CITATION_SOURCE": "report.pdf (uploaded 2026-04-01), p. 12",
+            }
+        ]
+        refs = extract_references([self._make_tool_output(data)])
+        assert len(refs) == 1
+        assert refs[0]["type"] == "document"
+        assert refs[0]["filename"] == "report.pdf"
+        assert refs[0]["page"] == 12
+
+    def test_multiple_tool_outputs(self):
+        """References extracted from multiple tool outputs."""
+        output1 = self._make_tool_output(
+            [{"INDICATOR": "WB_WDI_A", "DATABASE_ID": "WB_WDI", "TIME_PERIOD": "2020", "CITATION_SOURCE": "WDI"}]
+        )
+        output2 = self._make_tool_output(
+            [{"INDICATOR": "WB_HNP_B", "DATABASE_ID": "WB_HNP", "TIME_PERIOD": "2021", "CITATION_SOURCE": "HNP"}]
+        )
+        refs = extract_references([output1, output2])
+        assert len(refs) == 2
+
+    def test_handles_none_in_list(self):
+        """None values in tool_outputs don't crash."""
+        refs = extract_references([None])  # type: ignore[list-item]
+        assert refs == []
+
+
+class TestDeduplicateReferences:
+    """AC2: Deduplication by (database_id, indicator_code) for API refs."""
+
+    def test_merges_same_indicator_different_years(self):
+        """Same db+indicator with different years → one ref with merged years."""
+        raw = [
+            {
+                "source": "WDI",
+                "indicator_code": "A",
+                "indicator_name": "Ind A",
+                "database_id": "WB_WDI",
+                "year": 2020,
+                "type": "api",
+            },
+            {
+                "source": "WDI",
+                "indicator_code": "A",
+                "indicator_name": "Ind A",
+                "database_id": "WB_WDI",
+                "year": 2021,
+                "type": "api",
+            },
+            {
+                "source": "WDI",
+                "indicator_code": "A",
+                "indicator_name": "Ind A",
+                "database_id": "WB_WDI",
+                "year": 2022,
+                "type": "api",
+            },
+        ]
+        result = deduplicate_references(raw)
+        assert len(result) == 1
+        assert result[0]["id"] == 1
+        assert result[0]["years"] == "2020-2022"
+
+    def test_different_indicators_same_db_separate_refs(self):
+        """Different indicators from same DB get separate refs."""
+        raw = [
+            {
+                "source": "WDI",
+                "indicator_code": "A",
+                "indicator_name": "",
+                "database_id": "WB_WDI",
+                "year": 2020,
+                "type": "api",
+            },
+            {
+                "source": "WDI",
+                "indicator_code": "B",
+                "indicator_name": "",
+                "database_id": "WB_WDI",
+                "year": 2020,
+                "type": "api",
+            },
+        ]
+        result = deduplicate_references(raw)
+        assert len(result) == 2
+        assert result[0]["id"] == 1
+        assert result[1]["id"] == 2
+
+    def test_sequential_ids(self):
+        """IDs are assigned sequentially starting from 1."""
+        raw = [
+            {
+                "source": "S1",
+                "indicator_code": "A",
+                "indicator_name": "",
+                "database_id": "D1",
+                "year": 2020,
+                "type": "api",
+            },
+            {
+                "source": "S2",
+                "indicator_code": "B",
+                "indicator_name": "",
+                "database_id": "D2",
+                "year": 2021,
+                "type": "api",
+            },
+            {
+                "source": "S3",
+                "indicator_code": "C",
+                "indicator_name": "",
+                "database_id": "D3",
+                "year": 2022,
+                "type": "api",
+            },
+        ]
+        result = deduplicate_references(raw)
+        assert [r["id"] for r in result] == [1, 2, 3]
+
+    def test_document_refs_kept_separate(self):
+        """Document refs are deduplicated by (filename, page)."""
+        raw = [
+            {
+                "source": "report.pdf, p. 5",
+                "indicator_code": "",
+                "indicator_name": "",
+                "database_id": "",
+                "year": None,
+                "type": "document",
+                "filename": "report.pdf",
+                "upload_date": "",
+                "page": 5,
+                "chunk": None,
+            },
+            {
+                "source": "report.pdf, p. 5",
+                "indicator_code": "",
+                "indicator_name": "",
+                "database_id": "",
+                "year": None,
+                "type": "document",
+                "filename": "report.pdf",
+                "upload_date": "",
+                "page": 5,
+                "chunk": None,
+            },
+        ]
+        result = deduplicate_references(raw)
+        assert len(result) == 1
+
+    def test_empty_input(self):
+        """Empty input returns empty list."""
+        assert deduplicate_references([]) == []
+
+    def test_uses_first_nonempty_indicator_name(self):
+        """If first record has no name but second does, use the second."""
+        raw = [
+            {
+                "source": "WDI",
+                "indicator_code": "A",
+                "indicator_name": "",
+                "database_id": "WB_WDI",
+                "year": 2020,
+                "type": "api",
+            },
+            {
+                "source": "WDI",
+                "indicator_code": "A",
+                "indicator_name": "CO2 emissions",
+                "database_id": "WB_WDI",
+                "year": 2021,
+                "type": "api",
+            },
+        ]
+        result = deduplicate_references(raw)
+        assert result[0]["indicator_name"] == "CO2 emissions"
+
+
+class TestFormatReferenceList:
+    """AC3/AC4/AC5/AC6: Reference list formatting."""
+
+    def test_api_reference_format(self):
+        """AC3: API citation in IEEE-light format."""
+        refs = [
+            {
+                "id": 1,
+                "source": "World Development Indicators",
+                "indicator_code": "EN_ATM_CO2E_KT",
+                "indicator_name": "CO2 emissions, total (kt)",
+                "database_id": "WB_WDI",
+                "years": "2015-2022",
+                "type": "api",
+            }
+        ]
+        result = format_reference_list(refs)
+        assert "[1]" in result
+        assert "CO2 emissions, total (kt)" in result
+        assert "EN_ATM_CO2E_KT" in result
+        assert "World Development Indicators" in result
+        assert "2015-2022" in result
+
+    def test_document_reference_format(self):
+        """AC4: Document citation format."""
+        refs = [
+            {
+                "id": 1,
+                "source": "report.pdf (uploaded 2026-04-01), p. 12",
+                "indicator_code": "",
+                "indicator_name": "",
+                "database_id": "",
+                "years": "",
+                "type": "document",
+                "filename": "report.pdf",
+                "upload_date": "2026-04-01",
+                "page": 12,
+            }
+        ]
+        result = format_reference_list(refs)
+        assert "[1]" in result
+        assert "report.pdf" in result
+
+    def test_empty_references_returns_empty_string(self):
+        """AC5: No references → empty string."""
+        assert format_reference_list([]) == ""
+
+    def test_language_title_english(self):
+        """AC6: English title."""
+        refs = [
+            {
+                "id": 1,
+                "source": "S",
+                "indicator_code": "",
+                "indicator_name": "",
+                "database_id": "",
+                "years": "",
+                "type": "api",
+            }
+        ]
+        result = format_reference_list(refs, language="en")
+        assert "**References**" in result
+
+    def test_language_title_portuguese(self):
+        """AC6: Portuguese title."""
+        refs = [
+            {
+                "id": 1,
+                "source": "S",
+                "indicator_code": "",
+                "indicator_name": "",
+                "database_id": "",
+                "years": "",
+                "type": "api",
+            }
+        ]
+        result = format_reference_list(refs, language="pt")
+        assert "**Referências**" in result
+
+    def test_language_title_spanish(self):
+        """AC6: Spanish title."""
+        refs = [
+            {
+                "id": 1,
+                "source": "S",
+                "indicator_code": "",
+                "indicator_name": "",
+                "database_id": "",
+                "years": "",
+                "type": "api",
+            }
+        ]
+        result = format_reference_list(refs, language="es")
+        assert "**Referencias**" in result
+
+    def test_language_title_fallback(self):
+        """AC6: Unknown language falls back to English."""
+        refs = [
+            {
+                "id": 1,
+                "source": "S",
+                "indicator_code": "",
+                "indicator_name": "",
+                "database_id": "",
+                "years": "",
+                "type": "api",
+            }
+        ]
+        result = format_reference_list(refs, language="xx")
+        assert "**References**" in result
+
+    def test_multiple_references(self):
+        """Multiple refs formatted with sequential numbers."""
+        refs = [
+            {
+                "id": 1,
+                "source": "WDI",
+                "indicator_code": "A",
+                "indicator_name": "Ind A",
+                "database_id": "D1",
+                "years": "2020",
+                "type": "api",
+            },
+            {
+                "id": 2,
+                "source": "HNP",
+                "indicator_code": "B",
+                "indicator_name": "Ind B",
+                "database_id": "D2",
+                "years": "2021",
+                "type": "api",
+            },
+        ]
+        result = format_reference_list(refs)
+        assert "[1]" in result
+        assert "[2]" in result
