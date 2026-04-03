@@ -28,9 +28,8 @@ def _parse_time_period_year(time_period: Any) -> int | None:
     Handles the following formats from the Data360 API:
     - Simple year: ``"2022"`` → 2022
     - Quarter notation: ``"2022Q1"`` → 2022 (first 4 chars)
-    - Range string: ``"2015-2022"`` → 2015 (start of range; both endpoints
-      are accumulated separately via the returned value being the start year;
-      callers that need both endpoints should use :func:`_parse_time_period_years`)
+    - Range string: ``"2015-2022"`` → 2015 (start year only; use
+      :func:`_parse_time_period_years` when all years in the range are needed)
 
     Returns ``None`` if the value cannot be parsed.
     """
@@ -48,14 +47,15 @@ def _parse_time_period_year(time_period: Any) -> int | None:
 def _parse_time_period_years(time_period: Any) -> list[int]:
     """Parse a TIME_PERIOD value into a list of year integers.
 
-    Handles range strings like ``"2015-2022"`` by returning both endpoints.
+    Handles range strings like ``"2015-2022"`` by expanding to the full
+    inclusive list of years (e.g. ``[2015, 2016, ..., 2022]``).
     For simple years and quarter notation, returns a single-element list.
     Returns an empty list if the value cannot be parsed.
     """
     if time_period is None:
         return []
     raw = str(time_period).strip()
-    # Detect range format: "YYYY-YYYY" (exactly 9 chars, dash at position 4)
+    # Detect range format: starts with "YYYY-YYYY" (dash at position 4, digits at 5-8)
     if len(raw) >= 9 and raw[4] == "-" and raw[5:9].isdigit():
         start_str = raw[:4]
         end_str = raw[5:9]
