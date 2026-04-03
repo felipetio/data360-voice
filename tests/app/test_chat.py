@@ -226,6 +226,7 @@ class TestStreamingResponse:
             patch("app.chat.settings") as settings_mock,
         ):
             settings_mock.rag_enabled = False
+            settings_mock.staleness_threshold_years = 2
             settings_mock.claude_model = "claude-3-5-sonnet-20241022"
             settings_mock.claude_max_tokens = 4096
             settings_mock.max_tool_rounds = 20
@@ -238,7 +239,7 @@ class TestStreamingResponse:
 
             await reload_chat.on_message(incoming)
 
-        assert captured_call_args.get("system") == get_system_prompt(rag_enabled=False)
+        assert captured_call_args.get("system") == get_system_prompt(rag_enabled=False, staleness_threshold_years=2)
 
     async def test_conversation_history_passed_to_api(self, reload_chat):
         """Prior conversation turns are included in the messages list."""

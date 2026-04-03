@@ -40,12 +40,20 @@ _BASE_SYSTEM_PROMPT = (
     "(same database + indicator combination) again.\n"
     "- Example: 'Brazil emitted 467,000 kt of CO2 in 2022 [1], "
     "while India emitted 2,693,000 kt [2].'\n"
-    "- After the narrative, append a numbered reference list matching the markers.\n"
-    "- Format each entry as: '[n] Source Name, \"Indicator Name\" (INDICATOR_CODE), YEAR(s).'\n"
-    "- Use the CITATION_SOURCE field value as the source name.\n"
-    "- Example reference list:\n"
-    '  [1] World Development Indicators, "CO2 emissions, total (kt)" (EN.ATM.CO2E.KT), 2015-2022.\n'
-    '  [2] Health Nutrition and Population Statistics, "Life expectancy" (SP.DYN.LE00.IN), 2021.\n\n'
+    "- A reference list will be appended automatically by the system. "
+    "Do not generate a reference list yourself.\n\n"
+    "DATA FRESHNESS:\n"
+    "- For every data claim, include the year inline in prose. "
+    'Example: "Brazil emitted 467 kt in 2022 [1]" — the year must appear in the narrative.\n'
+    "- When the most recent year in a dataset is more than {staleness_threshold} years before "
+    "the current year, add an explicit staleness warning. "
+    'Example: "Note: the most recent World Bank data available for this indicator is from 2019, '
+    'which is over {staleness_threshold} years old. This is the latest officially published figure."\n'
+    "- In multi-country comparisons where data years differ across countries, "
+    "note each country's most recent year individually. "
+    'Example: "Brazil (latest: 2022), India (latest: 2020 — data may lag)."\n'
+    "- Never omit data year information. If the year is ambiguous or missing "
+    "from the tool response, say so explicitly.\n\n"
     "STYLE:\n"
     "- Be concise and factual. Prefer short paragraphs over bullet lists for narrative responses.\n"
     "- Avoid raw tables by default; describe data values in human-readable narrative form.\n"
@@ -96,12 +104,20 @@ DOCUMENT_SEARCH_SECTION = (
 )
 
 
-def get_system_prompt(rag_enabled: bool = False) -> str:
-    """Return the full system prompt, optionally including the DOCUMENT SEARCH section."""
+def get_system_prompt(rag_enabled: bool = False, staleness_threshold_years: int = 2) -> str:
+    """Return the full system prompt, optionally including the DOCUMENT SEARCH section.
+
+    Args:
+        rag_enabled: Whether to include the DOCUMENT SEARCH section.
+        staleness_threshold_years: Number of years after which data is considered stale.
+            Injected into the DATA FRESHNESS section. Default: 2.
+    """
+    prompt = _BASE_SYSTEM_PROMPT.replace("{staleness_threshold}", str(staleness_threshold_years))
     if rag_enabled:
-        return _BASE_SYSTEM_PROMPT + "\n\n" + DOCUMENT_SEARCH_SECTION
-    return _BASE_SYSTEM_PROMPT
+        return prompt + "\n\n" + DOCUMENT_SEARCH_SECTION
+    return prompt
 
 
 # backward-compatible alias — existing `from app.prompts import SYSTEM_PROMPT` references still work
-SYSTEM_PROMPT = _BASE_SYSTEM_PROMPT
+# Uses default staleness threshold of 2 years; use get_system_prompt() to customise.
+SYSTEM_PROMPT = _BASE_SYSTEM_PROMPT.replace("{staleness_threshold}", "2")

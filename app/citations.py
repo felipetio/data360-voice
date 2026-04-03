@@ -22,6 +22,54 @@ _REFERENCE_TITLES: dict[str, str] = {
 }
 
 
+def _parse_time_period_year(time_period: Any) -> int | None:
+    """Parse a TIME_PERIOD value into a year integer.
+
+    Handles the following formats from the Data360 API:
+    - Simple year: ``"2022"`` → 2022
+    - Quarter notation: ``"2022Q1"`` → 2022 (first 4 chars)
+    - Range string: ``"2015-2022"`` → 2015 (start of range; both endpoints
+      are accumulated separately via the returned value being the start year;
+      callers that need both endpoints should use :func:`_parse_time_period_years`)
+
+    Returns ``None`` if the value cannot be parsed.
+    """
+    if time_period is None:
+        return None
+    raw = str(time_period).strip()
+    # Take the first 4 characters which represent the year in all known formats
+    year_str = raw[:4]
+    try:
+        return int(year_str)
+    except (ValueError, TypeError):
+        return None
+
+
+def _parse_time_period_years(time_period: Any) -> list[int]:
+    """Parse a TIME_PERIOD value into a list of year integers.
+
+    Handles range strings like ``"2015-2022"`` by returning both endpoints.
+    For simple years and quarter notation, returns a single-element list.
+    Returns an empty list if the value cannot be parsed.
+    """
+    if time_period is None:
+        return []
+    raw = str(time_period).strip()
+    # Detect range format: "YYYY-YYYY" (exactly 9 chars, dash at position 4)
+    if len(raw) >= 9 and raw[4] == "-" and raw[5:9].isdigit():
+        start_str = raw[:4]
+        end_str = raw[5:9]
+        try:
+            start = int(start_str)
+            end = int(end_str)
+            return list(range(start, end + 1))
+        except (ValueError, TypeError):
+            pass
+    # Fall back to single year
+    year = _parse_time_period_year(raw)
+    return [year] if year is not None else []
+
+
 def _collapse_years(years: list[int]) -> str:
     """Collapse a sorted list of years into a compact range string.
 
@@ -111,19 +159,15 @@ def extract_references(tool_outputs: Sequence[str | None]) -> list[dict[str, Any
                     short_code = indicator[len(db_id) + 1 :]
 
                 year_raw = record.get("TIME_PERIOD")
-                year = None
-                if year_raw is not None:
-                    try:
-                        year = int(str(year_raw).strip())
-                    except (ValueError, TypeError):
-                        pass
+                years = _parse_time_period_years(year_raw)
 
                 ref = {
                     "source": citation_source,
                     "indicator_code": short_code,
                     "indicator_name": record.get("COMMENT_TS", ""),
                     "database_id": db_id,
-                    "year": year,
+                    "year": years[0] if years else None,  # backward compat
+                    "years": years,
                     "type": "api",
                 }
 
@@ -168,10 +212,12 @@ def deduplicate_references(raw_refs: list[dict[str, Any]]) -> list[dict[str, Any
                 entry["chunk"] = ref.get("chunk")
             groups[key] = entry
 
-        # Accumulate years
-        year = ref.get("year")
-        if year is not None:
+        # Accumulate years — support both legacy single-year and new multi-year list
+        for year in ref.get("years", []):
             groups[key]["years_set"].add(year)
+        # Also check legacy single year field for backward compat
+        if not ref.get("years") and ref.get("year") is not None:
+            groups[key]["years_set"].add(ref["year"])
 
         # Use first non-empty indicator_name
         if not groups[key]["indicator_name"] and ref.get("indicator_name"):
