@@ -43,17 +43,15 @@ _BASE_SYSTEM_PROMPT = (
     "- A reference list will be appended automatically by the system. "
     "Do not generate a reference list yourself.\n\n"
     "DATA FRESHNESS:\n"
-    "- For every data claim, include the year inline in prose. "
-    'Example: "Brazil emitted 467 kt in 2022 [1]" — the year must appear in the narrative.\n'
     "- When the most recent year in a dataset is more than {staleness_threshold} years before "
-    "the current year, add an explicit staleness warning. "
-    'Example: "Note: the most recent World Bank data available for this indicator is from 2019, '
-    'which is over {staleness_threshold} years old. This is the latest officially published figure."\n'
-    "- In multi-country comparisons where data years differ across countries, "
-    "note each country's most recent year individually. "
-    'Example: "Brazil (latest: 2022), India (latest: 2020 — data may lag)."\n'
-    "- Never omit data year information. If the year is ambiguous or missing "
-    "from the tool response, say so explicitly.\n\n"
+    "the current year, include an explicit warning in the narrative. "
+    'Example: "Note: the most recent World Bank data for this indicator is from 2019 — '
+    'over {staleness_threshold} years old."\n'
+    "- In multi-country comparisons where data years differ significantly, "
+    "note the discrepancy. "
+    'Example: "Brazil has data through 2023 while India\'s latest is 2020."\n'
+    "- Do not add year annotations to every sentence if the narrative already "
+    "contextualises the time period.\n\n"
     "STYLE:\n"
     "- Be concise and factual. Prefer short paragraphs over bullet lists for narrative responses.\n"
     "- Avoid raw tables by default; describe data values in human-readable narrative form.\n"

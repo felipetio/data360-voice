@@ -135,10 +135,13 @@ class TestDataFreshnessTransparency:
         assert "{staleness_threshold}" not in SYSTEM_PROMPT
         assert "2 years" in SYSTEM_PROMPT
 
-    def test_freshness_includes_inline_year_instruction(self):
-        """AC1: Prompt instructs Claude to include year inline in prose."""
+    def test_freshness_does_not_mandate_year_on_every_sentence(self):
+        """AC1 refined: Prompt does NOT mandate year annotation on every sentence."""
         result = get_system_prompt()
-        assert "inline" in result.lower()
+        # The old over-eager instruction is gone
+        assert "for every data claim, include the year inline" not in result.lower()
+        # But the section is still present
+        assert "DATA FRESHNESS" in result
 
     def test_freshness_includes_staleness_warning_instruction(self):
         """AC2: Prompt instructs Claude to warn about stale data."""
@@ -146,9 +149,9 @@ class TestDataFreshnessTransparency:
         assert "staleness" in result.lower() or "stale" in result.lower() or "warning" in result.lower()
 
     def test_freshness_includes_multi_country_recency_instruction(self):
-        """AC3: Prompt instructs Claude to show each country's data year in comparisons."""
+        """AC3: Prompt instructs Claude to flag year discrepancies in multi-country comparisons."""
         result = get_system_prompt()
-        assert "multi-country" in result.lower() or "each country" in result.lower()
+        assert "multi-country" in result.lower() or "discrepancy" in result.lower() or "differ" in result.lower()
 
     def test_rag_prompt_also_has_data_freshness(self):
         """DATA FRESHNESS section present even when RAG is enabled."""
