@@ -16,6 +16,13 @@ from app.config import settings
 from app.prompts import get_system_prompt
 
 # ---------------------------------------------------------------------------
+# Citation UI sentinel template (Story 9.1)
+# ---------------------------------------------------------------------------
+# Hidden HTML span embedded in message text so citations.js can read citation JSON
+# from the DOM without needing access to Chainlit's internal React state.
+_CITATION_DATA_TPL = '<span class="citation-data" data-citations=\'{}\' aria-hidden="true"></span>'
+
+# ---------------------------------------------------------------------------
 # RAG upload constants (used only when DATA360_RAG_ENABLED=true)
 # ---------------------------------------------------------------------------
 
@@ -443,6 +450,12 @@ async def _agentic_loop(
                 final_text += ref_block
                 # Attach structured references to message metadata for Epic 9 UI (AC7)
                 msg.metadata = {"references": refs}
+                # Embed citation JSON as hidden HTML sentinel for the Citation UI JS (Story 9.1).
+                # The custom JS reads this to build interactive markers without needing React state access.
+                _refs_json = json.dumps(refs, ensure_ascii=False)
+                citation_sentinel = "\n" + _CITATION_DATA_TPL.format(_refs_json)
+                await msg.stream_token(citation_sentinel)
+                final_text += citation_sentinel
 
             return final_text
 

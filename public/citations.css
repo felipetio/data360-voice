@@ -1,0 +1,93 @@
+/* ============================================================
+   Citation UI — Story 9.1
+   ============================================================ */
+
+/* ---- Inline citation markers [n] ---- */
+.citation-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7em;
+  font-weight: 600;
+  line-height: 1;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background-color: hsl(var(--primary) / 0.12);
+  color: hsl(var(--primary));
+  cursor: pointer;
+  vertical-align: super;
+  transition: background-color 0.15s ease;
+  white-space: nowrap;
+  position: relative;
+}
+
+.citation-marker:hover {
+  background-color: hsl(var(--primary) / 0.22);
+}
+
+/* ---- Tooltip ---- */
+.citation-tooltip {
+  position: fixed;
+  z-index: 9999;
+  max-width: 280px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.citation-tooltip.visible {
+  opacity: 1;
+}
+
+.citation-tooltip-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  font-size: 0.82rem;
+}
+
+.citation-tooltip-row {
+  color: hsl(var(--muted-foreground));
+  font-size: 0.75rem;
+  margin-top: 2px;
+}
+
+.citation-tooltip-row strong {
+  color: hsl(var(--foreground));
+  font-weight: 500;
+}
+
+/* ---- Reference block styling ---- */
+.citation-ref-block {
+  margin-top: 1.25em;
+  padding: 10px 14px;
+  border-left: 3px solid hsl(var(--primary) / 0.35);
+  background: hsl(var(--muted) / 0.45);
+  border-radius: 0 6px 6px 0;
+  font-size: 0.82em;
+  color: hsl(var(--muted-foreground));
+  line-height: 1.6;
+}
+
+.citation-ref-block p {
+  margin: 2px 0 !important;
+}
+
+.citation-ref-block p:first-child strong {
+  color: hsl(var(--foreground));
+  font-size: 0.9em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ---- Hidden data holder ---- */
+.citation-data {
+  display: none !important;
+}
