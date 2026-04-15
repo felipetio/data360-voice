@@ -1,6 +1,6 @@
 # Story 3.1: System Prompt for LLM Grounding Boundary
 
-**Status:** review
+**Status:** done
 **Epic:** 3 — Trust, Citations & LLM Grounding
 **Story Key:** 3-1-system-prompt-for-llm-grounding-boundary
 **Created:** 2026-04-02
