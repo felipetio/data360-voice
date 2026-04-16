@@ -11,7 +11,7 @@ AC2: Sentinel is NOT present when no citations → no interactive markers possib
 import json
 import re
 
-from app.chat import _CITATION_DATA_TPL
+from app.chat import _CITATION_DATA_TPL, _strip_llm_ref_tail
 
 # ------------------------------------------------------------------ #
 # Helpers                                                             #
@@ -192,3 +192,45 @@ class TestNoSentinelWhenNoCitations:
         # AC2: no sentinel in text
         assert "citation-data" not in final_text
         assert SENTINEL_RE.search(final_text) is None
+
+
+class TestStripLlmRefTail:
+    """_strip_llm_ref_tail removes LLM-generated reference sections before system appends its own."""
+
+    def test_strips_hr_followed_by_ref_lines(self):
+        """The common pattern: narrative + \n\n---\n[1] Source... must be stripped."""
+        text = "Brazil emitted X [1].\n\n---\n[1] CO2 and GHG Emissions, 2023."
+        result = _strip_llm_ref_tail(text)
+        assert result == "Brazil emitted X [1]."
+        assert "---" not in result
+
+    def test_strips_multiline_ref_block(self):
+        """Multiple ref lines after --- must all be stripped."""
+        text = "Narrative [1] and [2].\n\n---\n[1] Source A.\n[2] Source B."
+        result = _strip_llm_ref_tail(text)
+        assert result == "Narrative [1] and [2]."
+
+    def test_noop_when_no_ref_tail(self):
+        """Plain narrative without a ref tail must be returned unchanged."""
+        text = "Brazil emitted X [1]."
+        result = _strip_llm_ref_tail(text)
+        assert result == text
+
+    def test_noop_for_hr_not_followed_by_ref(self):
+        """A --- separator not followed by [n] lines must NOT be stripped."""
+        text = "Some text.\n\n---\n\nMore text."
+        result = _strip_llm_ref_tail(text)
+        assert result == text
+
+    def test_strips_single_newline_before_hr(self):
+        """Works with a single \n before --- as well as \n\n."""
+        text = "Narrative [1].\n---\n[1] Source."
+        result = _strip_llm_ref_tail(text)
+        assert result == "Narrative [1]."
+
+    def test_result_has_no_trailing_whitespace(self):
+        """Result must be rstripped — no trailing spaces or newlines."""
+        text = "Narrative [1].\n\n---\n[1] Source.\n\n"
+        result = _strip_llm_ref_tail(text)
+        assert result == "Narrative [1]."
+        assert not result.endswith(("\n", " "))

@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from contextlib import AsyncExitStack
 from typing import Any
 
@@ -21,6 +22,20 @@ from app.prompts import get_system_prompt
 # Hidden HTML span embedded in message text so citations.js can read citation JSON
 # from the DOM without needing access to Chainlit's internal React state.
 _CITATION_DATA_TPL = '<span class="citation-data" data-citations=\'{}\' aria-hidden="true"></span>'
+
+# Regex to strip LLM-generated trailing reference sections.
+# The model sometimes adds a "---\n[1] Source..." block despite instructions.
+# We strip it before appending the system-generated reference list.
+_LLM_REF_TAIL_RE = re.compile(
+    r"\n{0,2}---\s*\n(\[\d+\].*)",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def _strip_llm_ref_tail(text: str) -> str:
+    """Remove any trailing LLM-generated reference section (--- followed by [n] lines)."""
+    return _LLM_REF_TAIL_RE.sub("", text).rstrip()
+
 
 # ---------------------------------------------------------------------------
 # RAG upload constants (used only when DATA360_RAG_ENABLED=true)
@@ -439,7 +454,14 @@ async def _agentic_loop(
         stop_reason = final_message.stop_reason
 
         if stop_reason != "tool_use":
-            final_text = "".join(tokens)
+            final_text = _strip_llm_ref_tail("".join(tokens))
+            # If the model streamed extra content we stripped, patch the displayed message.
+            streamed_text = "".join(tokens)
+            if final_text != streamed_text:
+                # Replace msg content with the stripped version so the UI doesn't show the
+                # LLM-generated ref section that duplicates the system-appended one.
+                msg.content = final_text
+                await msg.update()
 
             # Build deterministic citation registry from collected tool outputs (AC1/AC3/AC7/AC8)
             raw_refs = extract_references(all_tool_outputs)

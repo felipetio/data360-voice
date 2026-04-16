@@ -204,10 +204,13 @@
   function wrapRefBlock(container) {
     if (container.querySelector(".citation-ref-block")) return; // already done
 
-    // Find the <strong> element whose text matches a reference title
-    const strongs = container.querySelectorAll("strong");
+    // Chainlit renders **bold** as <span class="font-bold"> (not <strong>).
+    // We also accept <strong> for resilience against version changes.
+    const titleCandidates = container.querySelectorAll(
+      'strong, b, [class~="font-bold"], [class*="font-semibold"]'
+    );
     let titleStrong = null;
-    for (const s of strongs) {
+    for (const s of titleCandidates) {
       if (REF_TITLES.some((t) => s.textContent.trim() === t)) {
         titleStrong = s;
         break;
@@ -270,18 +273,39 @@
   // ------------------------------------------------------------------ //
 
   function findAndProcessSteps(root) {
-    // Step elements have id="step-{uuid}"
-    const steps = root.querySelectorAll
-      ? root.querySelectorAll('[id^="step-"]')
-      : [];
+    const candidates = [];
 
-    for (const step of steps) {
-      processStep(step);
+    if (root.querySelectorAll) {
+      // Chainlit ≥2.x: step elements use id="step-{uuid}"
+      const byId = root.querySelectorAll('[id^="step-"]');
+      candidates.push(...byId);
+
+      // Fallback: .prose containers (Chainlit renders message text inside .prose)
+      // De-duplicate: only include .prose elements not already nested in a step-* element
+      const prosetEls = root.querySelectorAll('.prose');
+      for (const el of prosetEls) {
+        if (!el.closest('[id^="step-"]')) {
+          candidates.push(el);
+        }
+      }
     }
 
-    // Also check if root itself is a step
+    // Also check if root itself is a step or prose container
     if (root.id && root.id.startsWith("step-")) {
-      processStep(root);
+      candidates.push(root);
+    } else if (root.classList && root.classList.contains("prose")) {
+      if (!root.closest('[id^="step-"]')) {
+        candidates.push(root);
+      }
+    }
+
+    // De-duplicate via Set (querySelectorAll + manual pushes may overlap)
+    const seen = new Set();
+    for (const step of candidates) {
+      if (!seen.has(step)) {
+        seen.add(step);
+        processStep(step);
+      }
     }
   }
 
