@@ -306,16 +306,16 @@
   // Process a single message container                                    //
   // ------------------------------------------------------------------ //
 
-  const processedContainers = new WeakSet();
-
   function processContainer(el) {
-    if (processedContainers.has(el)) return;
+    // If interactive markers already exist in the DOM, we've already processed
+    // this container and the transforms survived React's render cycle (i.e.,
+    // streaming has ended). During streaming, React re-renders on every token
+    // and wipes our DOM modifications — so the absence of markers means we
+    // need to (re-)process.
+    if (el.querySelector(".citation-marker")) return;
 
     const refs = extractRefs(el);
     if (!refs || refs.length === 0) return;
-
-    // Only mark processed once we have refs (streaming may not be done yet)
-    processedContainers.add(el);
 
     const refsMap = {};
     refs.forEach((r) => {
@@ -373,21 +373,24 @@
   // MutationObserver                                                      //
   // ------------------------------------------------------------------ //
 
-  // Debounce: batch rapid mutations (streaming tokens) into a single scan
+  // Debounce: batch rapid mutations (streaming tokens) into a single scan.
+  // During streaming, React re-renders on every token and wipes our DOM changes.
+  // A 1s debounce ensures we only process after tokens stop arriving (i.e.,
+  // after the final msg.update() render). Each new mutation resets the timer.
   let scanTimer = null;
   const pendingContainers = new Set();
 
   function scheduleScan(container) {
     if (container) pendingContainers.add(container);
-    if (scanTimer) return;
+    // Reset timer on every call so we wait for a quiet period
+    if (scanTimer) clearTimeout(scanTimer);
     scanTimer = setTimeout(() => {
       scanTimer = null;
-      // Process all pending containers
       for (const c of pendingContainers) {
         processContainer(c);
       }
       pendingContainers.clear();
-    }, 300);
+    }, 1000);
   }
 
   const observer = new MutationObserver((mutations) => {
@@ -396,14 +399,21 @@
         mutation.addedNodes.forEach((node) => {
           if (node.nodeType !== Node.ELEMENT_NODE) return;
 
-          // Check if the added node IS or CONTAINS a container
-          findAndProcessContainers(node);
-
-          // Key fix: when a child (like the sentinel <span>) is added
-          // inside an existing container, walk UP to find and re-process it
+          // Walk up to the message container and schedule a debounced scan.
+          // During streaming, every token triggers a React re-render which
+          // adds/removes child nodes. We schedule instead of processing
+          // immediately so we only run once after tokens stop flowing.
           const ancestor = findAncestorContainer(node);
           if (ancestor) {
             scheduleScan(ancestor);
+          }
+
+          // Also check if the added node itself is a new container
+          if (
+            (node.id && node.id.startsWith("step-")) ||
+            (node.classList && node.classList.contains("prose"))
+          ) {
+            scheduleScan(node);
           }
         });
       } else if (mutation.type === "characterData") {
