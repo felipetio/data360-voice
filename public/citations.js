@@ -8,6 +8,13 @@
  * AC1: [n] markers → hoverable/clickable spans with tooltips
  * AC2: No citations → no markers shown (nothing to transform)
  * AC3: Tooltip shows API or document-type details appropriately
+ *
+ * Chainlit 2.10 DOM notes:
+ *   - Messages render inside <div class="prose lg:prose-xl">
+ *   - Paragraphs are <div role="article" class="leading-7 ...">
+ *   - Bold text uses <span class="font-bold">, NOT <strong>
+ *   - Horizontal rules (---) render as <div data-orientation="horizontal" ...>
+ *   - No step-{uuid} id on the prose container
  */
 
 (function () {
@@ -32,7 +39,12 @@
     if (ref.type === "document") {
       const filename = ref.filename || ref.source || "Unknown";
       const date = ref.upload_date || "";
-      const page = ref.page != null ? `p. ${ref.page}` : ref.chunk != null ? `chunk ${ref.chunk}` : "";
+      const page =
+        ref.page != null
+          ? `p. ${ref.page}`
+          : ref.chunk != null
+            ? `chunk ${ref.chunk}`
+            : "";
       return `
         <div class="citation-tooltip-title">${escHtml(filename)}</div>
         ${date ? `<div class="citation-tooltip-row"><strong>Uploaded:</strong> ${escHtml(date)}</div>` : ""}
@@ -67,11 +79,10 @@
 
     const rect = marker.getBoundingClientRect();
     const ttW = 280;
-    const ttH = 100; // approximate
+    const ttH = 100;
     let left = rect.left + window.scrollX;
     let top = rect.bottom + window.scrollY + 6;
 
-    // Clamp to viewport
     if (left + ttW > window.innerWidth - 8) {
       left = window.innerWidth - ttW - 8;
     }
@@ -96,11 +107,11 @@
   // ------------------------------------------------------------------ //
 
   /**
-   * Parse citation JSON from the hidden sentinel span inside a step element.
+   * Parse citation JSON from the hidden sentinel span inside a container.
    * Returns null if not found.
    */
-  function extractRefs(stepEl) {
-    const sentinel = stepEl.querySelector(".citation-data[data-citations]");
+  function extractRefs(container) {
+    const sentinel = container.querySelector(".citation-data[data-citations]");
     if (!sentinel) return null;
     try {
       return JSON.parse(sentinel.getAttribute("data-citations"));
@@ -111,10 +122,9 @@
 
   /**
    * Transform [n] text nodes into interactive citation markers.
-   * Skips content inside the reference block itself.
+   * Skips content inside the reference block and sentinel.
    */
   function transformMarkers(container, refsMap) {
-    // Walk text nodes in the prose area, skip the reference block
     const refBlock = container.querySelector(".citation-ref-block");
     const citData = container.querySelector(".citation-data");
 
@@ -123,11 +133,19 @@
       NodeFilter.SHOW_TEXT,
       {
         acceptNode(node) {
-          // Skip nodes inside the reference block or sentinel
           if (refBlock && refBlock.contains(node)) return NodeFilter.FILTER_REJECT;
           if (citData && citData.contains(node)) return NodeFilter.FILTER_REJECT;
-          // Skip nodes inside existing citation markers
-          if (node.parentElement && node.parentElement.closest(".citation-marker")) {
+          // Skip hidden LLM ref tail elements
+          if (
+            node.parentElement &&
+            node.parentElement.closest(".citation-hidden-llm-tail")
+          ) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          if (
+            node.parentElement &&
+            node.parentElement.closest(".citation-marker")
+          ) {
             return NodeFilter.FILTER_REJECT;
           }
           return NodeFilter.FILTER_ACCEPT;
@@ -138,7 +156,6 @@
     const textNodes = [];
     while (walker.nextNode()) textNodes.push(walker.currentNode);
 
-    // Regex: matches [1], [12], etc.
     const MARKER_RE = /\[(\d+)\]/g;
 
     textNodes.forEach((textNode) => {
@@ -155,7 +172,9 @@
         const ref = refsMap[refId];
 
         if (lastIndex < match.index) {
-          frag.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+          frag.appendChild(
+            document.createTextNode(text.slice(lastIndex, match.index))
+          );
         }
 
         if (ref) {
@@ -174,7 +193,6 @@
 
           frag.appendChild(span);
         } else {
-          // Unknown reference id — keep as-is
           frag.appendChild(document.createTextNode(match[0]));
         }
 
@@ -190,47 +208,88 @@
   }
 
   /**
-   * Wrap the rendered reference block paragraphs in a styled div.
+   * Wrap the rendered reference block in a styled div.
    *
-   * The block is streamed as markdown and renders as:
-   *   <p><strong>References</strong></p>
-   *   <p>[1] ...</p>
+   * Chainlit 2.10 renders markdown inside <div> elements (not <p>), and
+   * bold text as <span class="font-bold"> (not <strong>).
    *
-   * We detect the bold "References" / "Referências" / "Referencias" header
-   * and wrap everything from there to end-of-message in citation-ref-block.
+   * The reference section starts at one of:
+   *   a) A <div data-orientation="horizontal"> (the --- separator the LLM may add)
+   *   b) A <span class="font-bold">References</span> (the system-appended header)
+   *
+   * We use whichever appears first and wrap from there to the end.
    */
-  const REF_TITLES = ["References", "Referências", "Referencias", "Références"];
+  const REF_TITLES = [
+    "References",
+    "Referências",
+    "Referencias",
+    "Références",
+  ];
 
-  function wrapRefBlock(container) {
-    if (container.querySelector(".citation-ref-block")) return; // already done
+  /**
+   * Hide the LLM-generated reference tail (--- + [n] lines) that appears
+   * before the system-appended **References** block. The Python side strips
+   * these from msg.content, but tokens were already streamed to the client.
+   */
+  function hideLlmRefTail(container) {
+    // Find the --- separator
+    const hr = container.querySelector('[data-orientation="horizontal"]');
+    if (!hr) return;
 
-    // Chainlit renders **bold** as <span class="font-bold"> (not <strong>).
-    // We also accept <strong> for resilience against version changes.
+    // Find the system-appended References header
     const titleCandidates = container.querySelectorAll(
       'strong, b, [class~="font-bold"], [class*="font-semibold"]'
     );
-    let titleStrong = null;
+    let refTitleEl = null;
     for (const s of titleCandidates) {
       if (REF_TITLES.some((t) => s.textContent.trim() === t)) {
-        titleStrong = s;
+        refTitleEl = s;
         break;
       }
     }
-    if (!titleStrong) return;
+    if (!refTitleEl) return;
 
-    // The <p> that wraps the <strong> is our starting point
-    const titleP = titleStrong.closest("p");
-    if (!titleP) return;
+    // The LLM tail is everything between the --- and the References header.
+    // Hide these elements (don't remove — they might be streaming-incomplete).
+    const refTitleParent = refTitleEl.closest("div, p");
+    if (!refTitleParent) return;
 
-    // Collect titleP and all following siblings
-    const siblings = [];
-    let cur = titleP;
-    while (cur) {
-      // Stop at the hidden sentinel
-      if (cur.classList && cur.classList.contains("citation-data")) {
-        cur = cur.nextElementSibling;
-        continue;
+    let cur = hr;
+    while (cur && cur !== refTitleParent) {
+      const next = cur.nextElementSibling;
+      cur.style.display = "none";
+      cur.classList.add("citation-hidden-llm-tail");
+      cur = next;
+    }
+  }
+
+  function wrapRefBlock(container) {
+    if (container.querySelector(".citation-ref-block")) return;
+
+    // First, hide any LLM-generated ref tail
+    hideLlmRefTail(container);
+
+    // Find the bold "References" header (system-appended)
+    const titleCandidates = container.querySelectorAll(
+      'strong, b, [class~="font-bold"], [class*="font-semibold"]'
+    );
+    let titleEl = null;
+    for (const s of titleCandidates) {
+      if (REF_TITLES.some((t) => s.textContent.trim() === t)) {
+        titleEl = s;
+        break;
       }
+    }
+    if (!titleEl) return;
+
+    // Chainlit uses <div>, not <p> — match both for resilience
+    const startEl = titleEl.closest("div, p");
+    if (!startEl) return;
+
+    // Collect startEl and all following siblings up to the container boundary
+    const siblings = [];
+    let cur = startEl;
+    while (cur) {
       siblings.push(cur);
       cur = cur.nextElementSibling;
     }
@@ -239,107 +298,131 @@
 
     const wrapper = document.createElement("div");
     wrapper.className = "citation-ref-block";
-
-    titleP.parentNode.insertBefore(wrapper, titleP);
+    startEl.parentNode.insertBefore(wrapper, startEl);
     siblings.forEach((s) => wrapper.appendChild(s));
   }
 
   // ------------------------------------------------------------------ //
-  // Process a single step element                                        //
+  // Process a single message container                                    //
   // ------------------------------------------------------------------ //
 
-  const processedSteps = new WeakSet();
+  const processedContainers = new WeakSet();
 
-  function processStep(stepEl) {
-    if (processedSteps.has(stepEl)) return;
+  function processContainer(el) {
+    if (processedContainers.has(el)) return;
 
-    const refs = extractRefs(stepEl);
+    const refs = extractRefs(el);
     if (!refs || refs.length === 0) return;
 
     // Only mark processed once we have refs (streaming may not be done yet)
-    processedSteps.add(stepEl);
+    processedContainers.add(el);
 
     const refsMap = {};
     refs.forEach((r) => {
       refsMap[r.id] = r;
     });
 
-    wrapRefBlock(stepEl);
-    transformMarkers(stepEl, refsMap);
+    wrapRefBlock(el);
+    transformMarkers(el, refsMap);
   }
 
   // ------------------------------------------------------------------ //
-  // MutationObserver — watch for new/updated step elements              //
+  // Container discovery                                                   //
   // ------------------------------------------------------------------ //
 
-  function findAndProcessSteps(root) {
-    const candidates = [];
+  /**
+   * Find message containers and process them.
+   * Chainlit renders messages in:
+   *   - <div id="step-{uuid}"> (some versions)
+   *   - <div class="prose ..."> (2.10+)
+   */
+  function findAndProcessContainers(root) {
+    if (!root || !root.querySelectorAll) return;
 
-    if (root.querySelectorAll) {
-      // Chainlit ≥2.x: step elements use id="step-{uuid}"
-      const byId = root.querySelectorAll('[id^="step-"]');
-      candidates.push(...byId);
+    // Collect candidate containers
+    const candidates = new Set();
 
-      // Fallback: .prose containers (Chainlit renders message text inside .prose)
-      // De-duplicate: only include .prose elements not already nested in a step-* element
-      const prosetEls = root.querySelectorAll('.prose');
-      for (const el of prosetEls) {
-        if (!el.closest('[id^="step-"]')) {
-          candidates.push(el);
-        }
-      }
+    // Step elements
+    root.querySelectorAll('[id^="step-"]').forEach((el) => candidates.add(el));
+    // Prose containers
+    root.querySelectorAll(".prose").forEach((el) => candidates.add(el));
+
+    // Check root itself
+    if (root.id && root.id.startsWith("step-")) candidates.add(root);
+    if (root.classList && root.classList.contains("prose")) candidates.add(root);
+
+    candidates.forEach((el) => processContainer(el));
+  }
+
+  /**
+   * Walk up from an element to find the nearest message container.
+   * Used when a child element (like the sentinel) is added inside an
+   * already-existing container that wasn't processed yet.
+   */
+  function findAncestorContainer(el) {
+    let cur = el;
+    while (cur) {
+      if (cur.id && cur.id.startsWith("step-")) return cur;
+      if (cur.classList && cur.classList.contains("prose")) return cur;
+      cur = cur.parentElement;
     }
+    return null;
+  }
 
-    // Also check if root itself is a step or prose container
-    if (root.id && root.id.startsWith("step-")) {
-      candidates.push(root);
-    } else if (root.classList && root.classList.contains("prose")) {
-      if (!root.closest('[id^="step-"]')) {
-        candidates.push(root);
-      }
-    }
+  // ------------------------------------------------------------------ //
+  // MutationObserver                                                      //
+  // ------------------------------------------------------------------ //
 
-    // De-duplicate via Set (querySelectorAll + manual pushes may overlap)
-    const seen = new Set();
-    for (const step of candidates) {
-      if (!seen.has(step)) {
-        seen.add(step);
-        processStep(step);
+  // Debounce: batch rapid mutations (streaming tokens) into a single scan
+  let scanTimer = null;
+  const pendingContainers = new Set();
+
+  function scheduleScan(container) {
+    if (container) pendingContainers.add(container);
+    if (scanTimer) return;
+    scanTimer = setTimeout(() => {
+      scanTimer = null;
+      // Process all pending containers
+      for (const c of pendingContainers) {
+        processContainer(c);
       }
-    }
+      pendingContainers.clear();
+    }, 300);
   }
 
   const observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
       if (mutation.type === "childList") {
         mutation.addedNodes.forEach((node) => {
-          if (node.nodeType === Node.ELEMENT_NODE) {
-            findAndProcessSteps(node);
+          if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+          // Check if the added node IS or CONTAINS a container
+          findAndProcessContainers(node);
+
+          // Key fix: when a child (like the sentinel <span>) is added
+          // inside an existing container, walk UP to find and re-process it
+          const ancestor = findAncestorContainer(node);
+          if (ancestor) {
+            scheduleScan(ancestor);
           }
         });
       } else if (mutation.type === "characterData") {
-        // Text was updated — re-check the parent step
-        let parent = mutation.target.parentElement;
-        while (parent) {
-          if (parent.id && parent.id.startsWith("step-")) {
-            processStep(parent);
-            break;
-          }
-          parent = parent.parentElement;
+        const ancestor = findAncestorContainer(mutation.target);
+        if (ancestor) {
+          scheduleScan(ancestor);
         }
       }
     }
   });
 
-  // Start observing once DOM is ready
   function init() {
     observer.observe(document.body, {
       childList: true,
       subtree: true,
       characterData: true,
     });
-    // Process any already-rendered steps
-    findAndProcessSteps(document.body);
+    // Process any already-rendered containers
+    findAndProcessContainers(document.body);
   }
 
   if (document.readyState === "loading") {
