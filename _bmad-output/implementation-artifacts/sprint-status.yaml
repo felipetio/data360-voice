@@ -1,5 +1,5 @@
 # generated: 2026-03-24
-# last_updated: 2026-04-15 (Epics 8 & 3 retro completed, story 3-1 marked done)
+# last_updated: 2026-04-15 (Sprint planning: Epic 9 started)
 # project: bmad
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-24
-last_updated: 2026-04-03  # updated: Epic 3 completed (3-1 marked done), retrospective session for Epics 8 & 3
+last_updated: 2026-04-15  # Story 9-1 implemented: review
 project: bmad
 project_key: NOKEY
 tracking_system: file-system
@@ -114,8 +114,8 @@ development_status:
   # Epic 9: Citation UI & Journalist Export
   # Implementation order: after Epic 3
   # Depends on: Epic 3 Story 3.2 (Citation Registry Pipeline)
-  epic-9: backlog
-  9-1-citation-registry-rendering-in-chat-ui: backlog
+  epic-9: in-progress
+  9-1-citation-registry-rendering-in-chat-ui: review
   9-2-copy-with-citations: backlog
   9-3-source-verification-links: backlog
   epic-9-retrospective: optional
