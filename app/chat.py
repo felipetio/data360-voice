@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import os
-import re
 from contextlib import AsyncExitStack
 from typing import Any
 
@@ -15,16 +14,6 @@ import app.data  # noqa: F401  # registers Chainlit data layer
 from app.citations import deduplicate_references, extract_references, format_reference_list
 from app.config import settings
 from app.prompts import get_system_prompt
-
-# Strip LLM-generated trailing reference sections (e.g. "---\n[1] Source...").
-# The model sometimes adds these despite instructions not to.
-_LLM_REF_TAIL_RE = re.compile(r"\n{0,2}---\s*\n(\[\d+\].*)", re.DOTALL)
-
-
-def _strip_llm_ref_tail(text: str) -> str:
-    """Remove any trailing LLM-generated reference section."""
-    return _LLM_REF_TAIL_RE.sub("", text).rstrip()
-
 
 # ---------------------------------------------------------------------------
 # RAG upload constants (used only when DATA360_RAG_ENABLED=true)
@@ -443,7 +432,7 @@ async def _agentic_loop(
         stop_reason = final_message.stop_reason
 
         if stop_reason != "tool_use":
-            final_text = _strip_llm_ref_tail("".join(tokens))
+            final_text = "".join(tokens)
 
             # Build deterministic citation registry from collected tool outputs (AC1/AC3/AC7/AC8)
             raw_refs = extract_references(all_tool_outputs)
