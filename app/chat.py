@@ -16,24 +16,13 @@ from app.citations import deduplicate_references, extract_references, format_ref
 from app.config import settings
 from app.prompts import get_system_prompt
 
-# ---------------------------------------------------------------------------
-# Citation UI sentinel template (Story 9.1)
-# ---------------------------------------------------------------------------
-# Hidden HTML span embedded in message text so citations.js can read citation JSON
-# from the DOM without needing access to Chainlit's internal React state.
-_CITATION_DATA_TPL = '<span class="citation-data" data-citations=\'{}\' aria-hidden="true"></span>'
-
-# Regex to strip LLM-generated trailing reference sections.
-# The model sometimes adds a "---\n[1] Source..." block despite instructions.
-# We strip it before appending the system-generated reference list.
-_LLM_REF_TAIL_RE = re.compile(
-    r"\n{0,2}---\s*\n(\[\d+\].*)",
-    re.DOTALL | re.IGNORECASE,
-)
+# Strip LLM-generated trailing reference sections (e.g. "---\n[1] Source...").
+# The model sometimes adds these despite instructions not to.
+_LLM_REF_TAIL_RE = re.compile(r"\n{0,2}---\s*\n(\[\d+\].*)", re.DOTALL)
 
 
 def _strip_llm_ref_tail(text: str) -> str:
-    """Remove any trailing LLM-generated reference section (--- followed by [n] lines)."""
+    """Remove any trailing LLM-generated reference section."""
     return _LLM_REF_TAIL_RE.sub("", text).rstrip()
 
 
@@ -455,13 +444,6 @@ async def _agentic_loop(
 
         if stop_reason != "tool_use":
             final_text = _strip_llm_ref_tail("".join(tokens))
-            # If the model streamed extra content we stripped, patch the displayed message.
-            streamed_text = "".join(tokens)
-            if final_text != streamed_text:
-                # Replace msg content with the stripped version so the UI doesn't show the
-                # LLM-generated ref section that duplicates the system-appended one.
-                msg.content = final_text
-                await msg.update()
 
             # Build deterministic citation registry from collected tool outputs (AC1/AC3/AC7/AC8)
             raw_refs = extract_references(all_tool_outputs)
@@ -472,12 +454,10 @@ async def _agentic_loop(
                 final_text += ref_block
                 # Attach structured references to message metadata for Epic 9 UI (AC7)
                 msg.metadata = {"references": refs}
-                # Embed citation JSON as hidden HTML sentinel for the Citation UI JS (Story 9.1).
-                # The custom JS reads this to build interactive markers without needing React state access.
-                _refs_json = json.dumps(refs, ensure_ascii=False)
-                citation_sentinel = "\n" + _CITATION_DATA_TPL.format(_refs_json)
-                await msg.stream_token(citation_sentinel)
-                final_text += citation_sentinel
+
+            # Set final content (stripped LLM refs + system ref block).
+            # on_message calls msg.update() after _agentic_loop returns.
+            msg.content = final_text
 
             return final_text
 
