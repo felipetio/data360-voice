@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import os
-import re
 from contextlib import AsyncExitStack
 from typing import Any
 
@@ -12,30 +11,14 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
 import app.data  # noqa: F401  # registers Chainlit data layer
-from app.citations import deduplicate_references, extract_references, format_reference_list
+from app.citations import (
+    deduplicate_references,
+    extract_references,
+    format_reference_list,
+    strip_dangling_markers,
+)
 from app.config import settings
 from app.prompts import get_system_prompt
-
-# ---------------------------------------------------------------------------
-# Citation marker sanitization
-# ---------------------------------------------------------------------------
-
-_CITATION_MARKER_RE = re.compile(r"\[(\d+)\]")
-
-
-def _strip_dangling_markers(text: str, max_id: int) -> str:
-    """Drop ``[n]`` markers whose number is not in 1..max_id.
-
-    The LLM is instructed to use one marker per unique source, but occasionally it emits
-    sequential [1][2][3] for the same indicator across multiple tool calls — which dedup
-    then collapses into a single ref, leaving [2]/[3] as orphans pointing to nothing.
-    This guarantees no dangling marker reaches the user, regardless of LLM behavior.
-    """
-    return _CITATION_MARKER_RE.sub(
-        lambda m: m.group(0) if 1 <= int(m.group(1)) <= max_id else "",
-        text,
-    )
-
 
 # ---------------------------------------------------------------------------
 # RAG upload constants (used only when DATA360_RAG_ENABLED=true)
@@ -460,8 +443,15 @@ async def _agentic_loop(
             raw_refs = extract_references(all_tool_outputs)
             refs = deduplicate_references(raw_refs) if raw_refs else []
 
-            # Safety net: drop any [n] that doesn't map to a real ref (see _strip_dangling_markers).
-            final_text = _strip_dangling_markers(final_text, max_id=len(refs))
+            # Safety net: drop any [n] that doesn't map to a real ref (see strip_dangling_markers).
+            final_text, dropped_markers = strip_dangling_markers(final_text, max_id=len(refs))
+            if dropped_markers:
+                logger.warning(
+                    "Dropped %d dangling citation marker(s) %s (registry has %d entries)",
+                    len(dropped_markers),
+                    sorted(set(dropped_markers)),
+                    len(refs),
+                )
 
             if refs:
                 ref_block = "\n\n" + format_reference_list(refs)

@@ -7,6 +7,7 @@ this module builds the reference list that explains what each marker means.
 
 import json
 import logging
+import re
 from collections.abc import Sequence
 from typing import Any
 
@@ -278,3 +279,71 @@ def format_reference_list(references: list[dict[str, Any]], language: str = "en"
         lines.append(line)
 
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Marker sanitization — safety net for LLM narrative
+# ---------------------------------------------------------------------------
+
+# Matches [n] markers in prose. Anchored to ASCII [0-9] to avoid ValueError on
+# Unicode digits (e.g., Arabic-Indic '[١]') that \d would match but int() rejects.
+# Negative lookahead `(?!\()` preserves markdown-style link labels [n](url).
+_CITATION_MARKER_RE = re.compile(r"\[([0-9]+)\](?!\()")
+
+# Fenced code blocks (```...```) and inline code (`...`). Content inside these
+# is masked out before marker stripping so code samples stay intact.
+_CODE_SPAN_RE = re.compile(r"```[\s\S]*?```|`[^`\n]*`")
+
+# Whitespace cleanup after stripping: collapse double spaces and remove the
+# orphan space that would otherwise appear before punctuation.
+_WS_BEFORE_PUNCT_RE = re.compile(r" +([,.;:!?])")
+_WS_COLLAPSE_RE = re.compile(r" {2,}")
+
+
+def strip_dangling_markers(text: str, max_id: int) -> tuple[str, list[int]]:
+    """Drop ``[n]`` markers whose number is not in ``1..max_id``.
+
+    Safety net for the case where the LLM emits sequential ``[1][2][3]`` for
+    three tool calls covering the same indicator, but :func:`deduplicate_references`
+    collapses them into a single ref — leaving ``[2]`` and ``[3]`` as orphans.
+    This guarantees no dangling marker reaches the user, regardless of LLM behavior.
+
+    Robustness guarantees:
+
+    - Markdown link labels ``[n](url)`` are preserved via negative lookahead.
+    - Content inside fenced code blocks ``` ``` ``` and inline ``` ` ``` spans
+      is not processed — code samples stay intact.
+    - Only ASCII digits are matched, so Unicode-digit markers (e.g. ``[١]``)
+      never hit ``int()`` and cannot raise ``ValueError``.
+    - After stripping, double spaces and spaces-before-punctuation are cleaned
+      up so the narrative reads naturally.
+
+    Returns:
+        Tuple of (cleaned_text, list_of_dropped_ids). The list preserves the
+        order and multiplicity of dropped ids for observability/logging.
+    """
+    dropped: list[int] = []
+
+    def _sub(m: re.Match[str]) -> str:
+        n = int(m.group(1))
+        if 1 <= n <= max_id:
+            return m.group(0)
+        dropped.append(n)
+        return ""
+
+    def _process_prose(prose: str) -> str:
+        cleaned = _CITATION_MARKER_RE.sub(_sub, prose)
+        cleaned = _WS_BEFORE_PUNCT_RE.sub(r"\1", cleaned)
+        cleaned = _WS_COLLAPSE_RE.sub(" ", cleaned)
+        return cleaned
+
+    # Split into prose regions (processed) and code spans (untouched).
+    parts: list[str] = []
+    last_end = 0
+    for m in _CODE_SPAN_RE.finditer(text):
+        parts.append(_process_prose(text[last_end : m.start()]))
+        parts.append(m.group(0))
+        last_end = m.end()
+    parts.append(_process_prose(text[last_end:]))
+
+    return "".join(parts), dropped
