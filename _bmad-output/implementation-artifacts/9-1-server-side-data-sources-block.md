@@ -49,11 +49,11 @@ So that I can trust the information and trace it back to its source.
 
 ### Task 2: Remove `[n]` marker instructions from `app/prompts.py` (AC: #7, #8)
 
-- [ ] Replace the CITATION MARKERS section in `_BASE_SYSTEM_PROMPT` with a DATA PROVENANCE section:
+- [x] Replace the CITATION MARKERS section in `_BASE_SYSTEM_PROMPT` with a DATA PROVENANCE section:
   - State that a "Data Sources" section is appended automatically after the response
   - State: "Do not generate any source list, reference list, or place [n] markers in the text."
   - Keep concise, 2-3 lines maximum
-- [ ] Update `DOCUMENT_SEARCH_SECTION`:
+- [x] Update `DOCUMENT_SEARCH_SECTION`:
   - In the CROSS-REFERENCING WORKFLOW, remove step 4 (`"4. Use [n] numbered markers..."`)
   - Replace DOCUMENT CITATION FORMAT subsection: remove all `[n]` marker references, replace with "The system appends a Data Sources section automatically from tool responses. Do not construct citations manually."
   - Keep the GROUNDING BOUNDARY EXTENSION and WHEN NO DOCUMENTS ARE UPLOADED subsections unchanged
@@ -77,12 +77,12 @@ So that I can trust the information and trace it back to its source.
 
 ### Task 5: Update `tests/app/test_prompts.py` for removed marker instructions (AC: #7, #8)
 
-- [ ] Update `TestGroundingBoundary`:
+- [x] Update `TestGroundingBoundary`:
   - `test_base_prompt_contains_citation_marker_instructions`: rewrite to verify markers are NOT present (assert `"[1]"` NOT in prompt, assert `"marker"` NOT in prompt). Rename to `test_base_prompt_does_not_contain_citation_markers`.
   - `test_base_prompt_includes_reference_list_instructions`: update to assert `"Data Sources"` is mentioned and `"appended automatically"` is present. Update docstring.
   - `test_marker_reuse_instruction`: remove this test entirely (marker reuse is no longer applicable).
   - `test_rag_document_section_uses_numbered_markers`: rewrite to assert `"[n]"` is NOT in prompt when RAG enabled, and "Do not construct citations manually" is still present. Rename to `test_rag_document_section_does_not_use_numbered_markers`.
-- [ ] Update `TestDataFreshnessTransparency`:
+- [x] Update `TestDataFreshnessTransparency`:
   - `test_system_appends_reference_list_instruction_present`: update assertions from "reference list" to "Data Sources" and from "appended automatically by the system" to match new wording.
 
 ### Task 6: Full validation (AC: all)

@@ -19,7 +19,7 @@ class TestGetSystemPrompt:
         result = get_system_prompt(rag_enabled=True)
         # Key phrases from the base prompt must still be present
         assert "STRICT CONSTRAINTS" in result
-        assert "CITATION MARKERS" in result
+        assert "DATA PROVENANCE" in result
         assert "MULTI-TURN CONTEXT RESOLUTION" in result
 
     def test_rag_disabled_excludes_document_search_section(self):
@@ -38,10 +38,10 @@ class TestGetSystemPrompt:
         assert "CROSS-REFERENCING" in result
 
     def test_rag_enabled_includes_citation_format_for_documents(self):
-        """Prompt includes document-specific citation format instructions."""
+        """Prompt includes document citation format instructions."""
         result = get_system_prompt(rag_enabled=True)
-        assert "CITATION_SOURCE" in result
-        assert "uploaded" in result
+        assert "DOCUMENT CITATION FORMAT" in result
+        assert "Do not construct citations manually" in result
 
     def test_rag_enabled_includes_grounding_boundary_extension(self):
         """Prompt extends the grounding boundary to document content."""
@@ -63,19 +63,18 @@ class TestGetSystemPrompt:
 class TestGroundingBoundary:
     """Story 3.1: grounding boundary reinforcement and citation marker instructions."""
 
-    def test_base_prompt_contains_citation_marker_instructions(self):
-        """AC5: Citation marker [n] instructions present in base prompt."""
+    def test_base_prompt_does_not_contain_citation_markers(self):
+        """AC7: Citation markers [n] are NOT present in base prompt."""
         result = get_system_prompt(rag_enabled=False)
-        assert "[1]" in result
-        assert "[2]" in result
-        assert "marker" in result.lower()
+        assert "[1]" not in result
+        assert "[2]" not in result
+        assert "marker" not in result.lower()
 
-    def test_base_prompt_includes_reference_list_instructions(self):
-        """AC6: LLM is told about the reference list (system appends it automatically)."""
+    def test_base_prompt_includes_data_sources_instructions(self):
+        """AC7: LLM is told Data Sources section is appended automatically."""
         result = get_system_prompt(rag_enabled=False)
-        assert "reference list" in result.lower()
-        # Since story 3.2, the system appends the reference list; the prompt tells Claude not to generate one
-        assert "appended automatically by the system" in result
+        assert "Data Sources" in result
+        assert "appended automatically" in result
 
     def test_base_prompt_grounding_boundary_causation(self):
         """AC3: Causation constraint is explicit."""
@@ -87,22 +86,15 @@ class TestGroundingBoundary:
         result = get_system_prompt(rag_enabled=False)
         assert "opinions" in result.lower()
 
-    def test_marker_reuse_instruction(self):
-        """AC7: Instruction to reuse marker for same source is present."""
-        result = get_system_prompt(rag_enabled=False)
-        assert "reuse" in result.lower()
-        assert "same" in result.lower()
-
     def test_no_old_inline_citation_format(self):
         """AC5: Old citation instruction 'Example: (Source: ...)' removed from prompt."""
         result = get_system_prompt(rag_enabled=False)
         assert 'Example: "(Source:' not in result
 
-    def test_rag_document_section_uses_numbered_markers(self):
-        """AC8: Document search section aligns with [n] marker system."""
+    def test_rag_document_section_does_not_use_numbered_markers(self):
+        """AC8: Document search section does NOT reference [n] markers."""
         result = get_system_prompt(rag_enabled=True)
-        # The document section should reference [n] markers
-        assert "[n]" in result
+        assert "[n]" not in result
         assert "Do not construct citations manually" in result
 
 
@@ -158,8 +150,8 @@ class TestDataFreshnessTransparency:
         result = get_system_prompt(rag_enabled=True)
         assert "DATA FRESHNESS" in result
 
-    def test_system_appends_reference_list_instruction_present(self):
-        """AC5: Prompt tells Claude that reference list is appended automatically."""
+    def test_system_appends_data_sources_instruction_present(self):
+        """AC5: Prompt tells Claude that Data Sources section is appended automatically."""
         result = get_system_prompt()
-        assert "appended automatically by the system" in result
-        assert "Do not generate a reference list yourself" in result
+        assert "appended automatically" in result
+        assert "Do not generate any source list" in result
