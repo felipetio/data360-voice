@@ -1,8 +1,9 @@
 """Citation registry pipeline — deterministic citation extraction from MCP tool responses.
 
 Builds a structured reference list from tool outputs server-side, ensuring
-journalists can trust every source attribution. The LLM places [n] markers;
-this module builds the reference list that explains what each marker means.
+journalists can trust every source attribution. The server appends a
+bullet-point Data Sources section automatically; the LLM has zero citation
+responsibility.
 """
 
 import json
@@ -12,13 +13,13 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Language-adaptive reference list titles
-_REFERENCE_TITLES: dict[str, str] = {
-    "en": "References",
-    "pt": "Referências",
-    "es": "Referencias",
-    "fr": "Références",
-    "de": "Referenzen",
+# Language-adaptive Data Sources section titles
+_DATA_SOURCES_TITLES: dict[str, str] = {
+    "en": "Data Sources",
+    "pt": "Fontes de Dados",
+    "es": "Fuentes de Datos",
+    "fr": "Sources de Données",
+    "de": "Datenquellen",
 }
 
 
@@ -235,7 +236,7 @@ def deduplicate_references(raw_refs: list[dict[str, Any]]) -> list[dict[str, Any
 
 
 def format_reference_list(references: list[dict[str, Any]], language: str = "en") -> str:
-    """Format the deduplicated reference list as a markdown block.
+    """Format the deduplicated reference list as a bullet-point Data Sources block.
 
     Args:
         references: Deduplicated list from :func:`deduplicate_references`.
@@ -247,33 +248,30 @@ def format_reference_list(references: list[dict[str, Any]], language: str = "en"
     if not references:
         return ""
 
-    title = _REFERENCE_TITLES.get(language, "References")
+    title = _DATA_SOURCES_TITLES.get(language, "Data Sources")
     lines = [f"**{title}**\n"]
 
     for ref in references:
-        ref_id = ref["id"]
         if ref["type"] == "document":
-            filename = ref.get("filename", "unknown")
-            source = ref.get("source", filename)
-            line = f"[{ref_id}] {source}"
+            source = ref.get("source", ref.get("filename", "unknown"))
+            line = f"- {source}"
         else:
             source = ref.get("source", "Unknown")
             indicator_name = ref.get("indicator_name", "")
             indicator_code = ref.get("indicator_code", "")
             years = ref.get("years", "")
 
-            parts = [f"[{ref_id}]"]
-            if indicator_name:
+            parts = [source]
+            if indicator_name and indicator_code:
+                parts.append(f'"{indicator_name}" ({indicator_code})')
+            elif indicator_name:
                 parts.append(f'"{indicator_name}"')
-            if indicator_code:
-                parts.append(f"({indicator_code}),")
-            parts.append(f"{source}")
+            elif indicator_code:
+                parts.append(f"({indicator_code})")
             if years:
-                parts.append(f"({years}).")
-            else:
-                parts.append(".")
+                parts.append(years)
 
-            line = " ".join(parts)
+            line = "- " + ", ".join(parts)
 
         lines.append(line)
 
