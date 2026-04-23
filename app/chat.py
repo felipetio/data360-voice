@@ -444,10 +444,6 @@ async def _agentic_loop(
                 # Attach structured references to message metadata for Epic 9 UI (AC7)
                 msg.metadata = {"references": refs}
 
-            # Set final content (stripped LLM refs + system ref block).
-            # on_message calls msg.update() after _agentic_loop returns.
-            msg.content = final_text
-
             return final_text
 
         # Reset the UI message for the next iteration so intermediate
