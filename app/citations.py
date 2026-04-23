@@ -111,21 +111,46 @@ def extract_references(tool_outputs: Sequence[str | None]) -> list[dict[str, Any
     """
     raw_refs: list[dict[str, Any]] = []
 
-    for output in tool_outputs:
+    for idx, output in enumerate(tool_outputs):
         try:
             parsed = json.loads(output)
         except (json.JSONDecodeError, TypeError):
+            # Not JSON — could be a plain error string or tool-call exception.
+            snippet = (output or "")[:120].replace("\n", " ")
+            logger.warning(
+                "extract_references: tool_output[%d] is not JSON (snippet: %r)",
+                idx,
+                snippet,
+            )
             continue
 
         if not isinstance(parsed, dict):
+            logger.warning(
+                "extract_references: tool_output[%d] parsed but is not a dict (type=%s)",
+                idx,
+                type(parsed).__name__,
+            )
             continue
 
         # Skip error responses
         if not parsed.get("success", True):
+            logger.warning(
+                "extract_references: tool_output[%d] success=False (error=%r)",
+                idx,
+                parsed.get("error", "<no error field>"),
+            )
             continue
 
         data = parsed.get("data")
         if not isinstance(data, list):
+            # Most likely cause: tool returned data in a different shape
+            # (e.g., dict with nested 'records', or metadata-only response).
+            logger.warning(
+                "extract_references: tool_output[%d] has no 'data' list (top-level keys: %s, data type: %s)",
+                idx,
+                sorted(parsed.keys())[:10],
+                type(data).__name__ if data is not None else "None",
+            )
             continue
 
         dropped_no_source = 0
