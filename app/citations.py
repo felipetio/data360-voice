@@ -128,11 +128,13 @@ def extract_references(tool_outputs: Sequence[str | None]) -> list[dict[str, Any
         if not isinstance(data, list):
             continue
 
+        dropped_no_source = 0
         for record in data:
             if not isinstance(record, dict):
                 continue
             citation_source = record.get("CITATION_SOURCE")
             if not citation_source:
+                dropped_no_source += 1
                 continue
 
             # Determine if this is a document or API citation
@@ -173,6 +175,21 @@ def extract_references(tool_outputs: Sequence[str | None]) -> list[dict[str, Any
                 }
 
             raw_refs.append(ref)
+
+        # Observability: if the tool response had data rows but none carried a
+        # CITATION_SOURCE, the entire source is silently missing from the
+        # registry — the user will see dangling [n] markers they cannot verify.
+        # Log a warning with sample keys so we can fix the upstream metadata.
+        if dropped_no_source > 0:
+            sample_record = next((r for r in data if isinstance(r, dict)), {})
+            sample_keys = sorted(sample_record.keys())[:8] if sample_record else []
+            logger.warning(
+                "extract_references dropped %d record(s) missing CITATION_SOURCE "
+                "(sample keys: %s, total_in_response=%d)",
+                dropped_no_source,
+                sample_keys,
+                len(data),
+            )
 
     return raw_refs
 
