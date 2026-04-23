@@ -75,7 +75,7 @@ class TestGroundingBoundary:
         result = get_system_prompt(rag_enabled=False)
         assert "reference list" in result.lower()
         # Since story 3.2, the system appends the reference list; the prompt tells Claude not to generate one
-        assert "appended automatically by the system" in result
+        assert "system appends the reference list automatically" in result
 
     def test_base_prompt_grounding_boundary_causation(self):
         """AC3: Causation constraint is explicit."""
@@ -161,5 +161,5 @@ class TestDataFreshnessTransparency:
     def test_system_appends_reference_list_instruction_present(self):
         """AC5: Prompt tells Claude that reference list is appended automatically."""
         result = get_system_prompt()
-        assert "appended automatically by the system" in result
-        assert "Do not generate a reference list yourself" in result
+        assert "system appends the reference list automatically" in result
+        assert "Do not write one" in result

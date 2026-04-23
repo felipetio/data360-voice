@@ -8,6 +8,7 @@ AC1: Reference block is streamed and persisted in message content.
 AC2: No reference block when no citations (guard in _agentic_loop).
 """
 
+from app.chat import _strip_dangling_markers
 from app.citations import format_reference_list
 
 # ------------------------------------------------------------------ #
@@ -70,3 +71,48 @@ class TestNoRefsGuard:
     def test_nonempty_refs_list_is_truthy(self):
         raw_refs = [API_REF]
         assert raw_refs
+
+
+class TestStripDanglingMarkers:
+    """_strip_dangling_markers removes [n] markers pointing outside the registry.
+
+    This is the safety net for the case where the LLM emits [1][2][3] for three
+    tool calls covering the same indicator, but deduplicate_references collapses
+    them into a single ref — leaving [2] and [3] as orphans.
+    """
+
+    def test_drops_markers_beyond_registry_size(self):
+        """Registry has 1 entry → only [1] survives; [2] and [3] are stripped."""
+        text = "Brazil 467 kt [1], India 2,693 kt [2], China 11,472 kt [3]."
+        result = _strip_dangling_markers(text, max_id=1)
+        assert result == "Brazil 467 kt [1], India 2,693 kt , China 11,472 kt ."
+
+    def test_keeps_all_markers_when_all_valid(self):
+        """Registry has 2 entries → [1] and [2] both preserved."""
+        text = "CO2 [1] and population [2]."
+        result = _strip_dangling_markers(text, max_id=2)
+        assert result == text
+
+    def test_strips_all_markers_when_registry_empty(self):
+        """No refs → every marker is dangling."""
+        text = "Claim A [1] and claim B [2]."
+        result = _strip_dangling_markers(text, max_id=0)
+        assert result == "Claim A  and claim B ."
+
+    def test_noop_when_no_markers(self):
+        """Plain narrative with no [n] must be returned unchanged."""
+        text = "Brazil emitted X of CO2 in 2022."
+        result = _strip_dangling_markers(text, max_id=3)
+        assert result == text
+
+    def test_drops_zero_marker_as_invalid(self):
+        """[0] is not a valid registry id (ids start at 1); must be stripped."""
+        text = "Bogus [0] and real [1]."
+        result = _strip_dangling_markers(text, max_id=1)
+        assert result == "Bogus  and real [1]."
+
+    def test_repeated_valid_marker_preserved(self):
+        """Same marker used multiple times (correct LLM behavior) is untouched."""
+        text = "Brazil [1], India [1], China [1]."
+        result = _strip_dangling_markers(text, max_id=1)
+        assert result == text

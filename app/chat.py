@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from contextlib import AsyncExitStack
 from typing import Any
 
@@ -14,6 +15,27 @@ import app.data  # noqa: F401  # registers Chainlit data layer
 from app.citations import deduplicate_references, extract_references, format_reference_list
 from app.config import settings
 from app.prompts import get_system_prompt
+
+# ---------------------------------------------------------------------------
+# Citation marker sanitization
+# ---------------------------------------------------------------------------
+
+_CITATION_MARKER_RE = re.compile(r"\[(\d+)\]")
+
+
+def _strip_dangling_markers(text: str, max_id: int) -> str:
+    """Drop ``[n]`` markers whose number is not in 1..max_id.
+
+    The LLM is instructed to use one marker per unique source, but occasionally it emits
+    sequential [1][2][3] for the same indicator across multiple tool calls — which dedup
+    then collapses into a single ref, leaving [2]/[3] as orphans pointing to nothing.
+    This guarantees no dangling marker reaches the user, regardless of LLM behavior.
+    """
+    return _CITATION_MARKER_RE.sub(
+        lambda m: m.group(0) if 1 <= int(m.group(1)) <= max_id else "",
+        text,
+    )
+
 
 # ---------------------------------------------------------------------------
 # RAG upload constants (used only when DATA360_RAG_ENABLED=true)
@@ -436,15 +458,19 @@ async def _agentic_loop(
 
             # Build deterministic citation registry from collected tool outputs (AC1/AC3/AC7/AC8)
             raw_refs = extract_references(all_tool_outputs)
-            if raw_refs:
-                refs = deduplicate_references(raw_refs)
+            refs = deduplicate_references(raw_refs) if raw_refs else []
+
+            # Safety net: drop any [n] that doesn't map to a real ref (see _strip_dangling_markers).
+            final_text = _strip_dangling_markers(final_text, max_id=len(refs))
+
+            if refs:
                 ref_block = "\n\n" + format_reference_list(refs)
                 await msg.stream_token(ref_block)
                 final_text += ref_block
                 # Attach structured references to message metadata for Epic 9 UI (AC7)
                 msg.metadata = {"references": refs}
 
-            # Set final content (stripped LLM refs + system ref block).
+            # Set final content (sanitized narrative + system ref block).
             # on_message calls msg.update() after _agentic_loop returns.
             msg.content = final_text
 
