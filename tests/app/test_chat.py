@@ -1175,28 +1175,6 @@ class TestConfig:
         s = Settings(_env_file=None)
         assert s.claude_max_tokens == 8192
 
-    def test_config_tool_result_max_chars_default(self, monkeypatch):
-        """Default tool_result_max_chars is 50000."""
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
-        monkeypatch.delenv("TOOL_RESULT_MAX_CHARS", raising=False)
-
-        from app.config import Settings
-
-        s = Settings(_env_file=None)
-        assert s.tool_result_max_chars == 50000
-
-    def test_config_tool_result_max_chars_from_env(self, monkeypatch):
-        """TOOL_RESULT_MAX_CHARS env var overrides the default."""
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-        monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
-        monkeypatch.setenv("TOOL_RESULT_MAX_CHARS", "10000")
-
-        from app.config import Settings
-
-        s = Settings(_env_file=None)
-        assert s.tool_result_max_chars == 10000
-
 
 class TestModelDumpExcludeNone:
     """Verify model_dump(exclude_none=True) is used for assistant content blocks."""
@@ -1260,14 +1238,22 @@ class TestModelDumpExcludeNone:
                 assert value is not None, f"Found None value in block: {block}"
 
 
-class TestToolResultTruncation:
-    """Verify large tool results are truncated before feeding back to Claude."""
+class TestToolResultPassthrough:
+    """Verify tool results pass through unmodified — size limits belong on the server.
 
-    async def test_large_tool_result_is_truncated(self, reload_chat):
-        """Tool results exceeding max chars should be truncated with a marker."""
+    Rationale: the MCP server enforces pagination (1000/page, 5000 cap per call)
+    so the client does not need to re-truncate. Previously the client cut bytes
+    at a fixed limit, which could shear a JSON response mid-structure and break
+    downstream citation extraction. See PR #43 / commit removing tool_result_max_chars.
+    """
+
+    async def test_large_tool_result_passes_through_unchanged(self, reload_chat):
+        """A large well-formed tool result must be returned verbatim."""
         from app.chat import _extract_tool_result_text
 
-        large_text = "x" * 60000
+        large_text = '{"data":[' + ",".join(f'{{"n":{i}}}' for i in range(5000)) + "]}"
+        assert len(large_text) > 50000  # sanity — exceeds the old cap
+
         result = MagicMock()
         result.isError = False
         block = MagicMock()
@@ -1275,11 +1261,11 @@ class TestToolResultTruncation:
         result.content = [block]
 
         text = _extract_tool_result_text(result)
-        assert len(text) < 60000
-        assert "[truncated]" in text.lower() or "truncated" in text.lower()
+        assert text == large_text
+        assert "truncated" not in text.lower()
 
-    async def test_small_tool_result_not_truncated(self, reload_chat):
-        """Tool results within limit should not be truncated."""
+    async def test_small_tool_result_passes_through(self, reload_chat):
+        """Small results unchanged (sanity)."""
         from app.chat import _extract_tool_result_text
 
         small_text = '{"data": [1, 2, 3]}'

@@ -215,12 +215,7 @@ def _extract_tool_result_text(call_result) -> str:
     for block in call_result.content:
         if hasattr(block, "text"):
             parts.append(block.text)
-    text = "\n".join(parts) if parts else ""
-
-    max_chars = settings.tool_result_max_chars
-    if len(text) > max_chars:
-        text = text[:max_chars] + "\n\n[... truncated, results too large ...]"
-    return text
+    return "\n".join(parts) if parts else ""
 
 
 # ---------------------------------------------------------------------------
