@@ -296,29 +296,27 @@ def format_reference_list(references: list[dict[str, Any]], language: str = "en"
     for ref in references:
         ref_id = ref["id"]
         if ref["type"] == "document":
-            filename = ref.get("filename", "unknown")
-            source = ref.get("source", filename)
-            line = f"[{ref_id}] {source}"
+            source = ref.get("source", ref.get("filename", "unknown"))
+            lines.append(f"[{ref_id}] {source}")
+            continue
+
+        source = ref.get("source", "Unknown source")
+        indicator_name = ref.get("indicator_name", "")
+        indicator_code = ref.get("indicator_code", "")
+        years = ref.get("years", "")
+
+        # Group (CODE, years) in a single parenthetical suffix; include only what's present.
+        suffix_parts: list[str] = []
+        if indicator_code:
+            suffix_parts.append(indicator_code)
+        if years:
+            suffix_parts.append(years)
+        suffix = f" ({', '.join(suffix_parts)})" if suffix_parts else ""
+
+        if indicator_name:
+            lines.append(f'[{ref_id}] "{indicator_name}" — {source}{suffix}.')
         else:
-            source = ref.get("source", "Unknown")
-            indicator_name = ref.get("indicator_name", "")
-            indicator_code = ref.get("indicator_code", "")
-            years = ref.get("years", "")
-
-            parts = [f"[{ref_id}]"]
-            if indicator_name:
-                parts.append(f'"{indicator_name}"')
-            if indicator_code:
-                parts.append(f"({indicator_code}),")
-            parts.append(f"{source}")
-            if years:
-                parts.append(f"({years}).")
-            else:
-                parts.append(".")
-
-            line = " ".join(parts)
-
-        lines.append(line)
+            lines.append(f"[{ref_id}] {source}{suffix}.")
 
     return "\n".join(lines)
 
@@ -389,3 +387,97 @@ def strip_dangling_markers(text: str, max_id: int) -> tuple[str, list[int]]:
     parts.append(_process_prose(text[last_end:]))
 
     return "".join(parts), dropped
+
+
+# ---------------------------------------------------------------------------
+# LLM-generated reference-block removal
+# ---------------------------------------------------------------------------
+
+# Known header words for "References" / "Bibliography" across supported
+# languages. The LLM sometimes writes these despite the prompt's instruction
+# not to — we strip them so the canonical block isn't duplicated.
+_REF_HEADER_WORDS = (
+    "references",
+    "referências",
+    "referencias",
+    "références",
+    "referenzen",
+    "bibliography",
+    "bibliografia",
+    "bibliografía",
+    "fontes",
+    "sources",
+    "fuentes",
+)
+
+# Pattern: blank line(s), optional `---` separator, optional bold/italic
+# wrapping, one of the known header words, optional `:`, a newline, followed
+# by at least one `[n]` citation line. Strips from header to end of text.
+_LLM_REF_SECTION_RE = re.compile(
+    r"\n+"
+    r"(?:---\s*\n\s*)?"
+    r"\*{0,3}\s*"
+    r"(?:" + "|".join(_REF_HEADER_WORDS) + r")"
+    r"\s*:?\s*\*{0,3}\s*\n+"
+    r"(?=\s*\[\d+\])"
+    r"[\s\S]*$",
+    re.IGNORECASE,
+)
+
+# Fallback: `---` separator followed directly by `[n]` lines (no header word).
+_LLM_HR_CITATIONS_RE = re.compile(r"\n+---\s*\n\s*\[\d+\][\s\S]*$")
+
+
+def strip_llm_ref_tail(text: str) -> str:
+    """Remove any LLM-generated trailing reference section.
+
+    The system prompt forbids the LLM from writing a reference list, but it
+    occasionally does anyway — typically as either a bolded header
+    (``**References**``, ``**Referências:**``, etc., in any supported locale)
+    followed by ``[n] ...`` lines, or as a ``---`` horizontal rule followed
+    directly by ``[n]`` citations.
+
+    Both patterns are stripped so the canonical block from
+    :func:`format_reference_list` can be appended without duplication.
+    The lookahead ``(?=\\s*\\[\\d+\\])`` ensures we only match when the header
+    is actually followed by citation lines — legitimate prose like
+    "References to colonial history..." is preserved.
+    """
+    text = _LLM_REF_SECTION_RE.sub("", text)
+    text = _LLM_HR_CITATIONS_RE.sub("", text)
+    return text.rstrip()
+
+
+# ---------------------------------------------------------------------------
+# Narrative language detection (for i18n of the reference block header)
+# ---------------------------------------------------------------------------
+
+# Distinctive markers for each supported language. Checked against a trailing
+# sample of the narrative; the language with the most matches wins. ASCII words
+# are wrapped in spaces to avoid matching inside other words.
+_LANG_HINTS: list[tuple[str, tuple[str, ...]]] = [
+    ("pt", ("ção", "ções", "ões", " não ", " para ", " está ", " são ")),
+    ("es", ("ción", " ñ", " está ", " pero ", " para ", " están ")),
+    ("fr", (" est ", " une ", " sont ", " avec ", " dans ", " mais ")),
+    ("de", (" und ", " sind ", "ß", " ist ", " mit ", " der ", " die ")),
+]
+
+
+def detect_narrative_language(text: str) -> str:
+    """Heuristically detect the dominant language of a narrative.
+
+    Returns an ISO 639-1 code matching one of the keys in
+    :data:`_REFERENCE_TITLES`. Defaults to ``"en"``. Samples up to the last
+    1000 characters to avoid scanning very long outputs, and to weight the
+    detection toward the final paragraphs where the response language is
+    most consistent.
+    """
+    sample = (text or "")[-1000:].lower()
+    best_lang = "en"
+    best_score = 0
+    for lang, hints in _LANG_HINTS:
+        score = sum(1 for h in hints if h in sample)
+        if score > best_score:
+            best_lang = lang
+            best_score = score
+    return best_lang

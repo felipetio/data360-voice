@@ -13,9 +13,11 @@ from mcp.client.streamable_http import streamablehttp_client
 import app.data  # noqa: F401  # registers Chainlit data layer
 from app.citations import (
     deduplicate_references,
+    detect_narrative_language,
     extract_references,
     format_reference_list,
     strip_dangling_markers,
+    strip_llm_ref_tail,
 )
 from app.config import settings
 from app.prompts import get_system_prompt
@@ -407,6 +409,16 @@ async def _agentic_loop(
     if tools:
         call_kwargs["tools"] = tools
 
+    # Debug visibility for intermittent hallucination failures: log model +
+    # tools count at loop entry + stop_reason after each round.
+    logger.info(
+        "agentic_loop start: model=%s tools=%d mcp_session=%s history_len=%d",
+        call_kwargs["model"],
+        len(tools) if tools else 0,
+        "yes" if mcp_session is not None else "NONE",
+        len(history),
+    )
+
     max_rounds = settings.max_tool_rounds
     tool_round = 0
     all_tool_outputs: list[str] = []
@@ -430,9 +442,20 @@ async def _agentic_loop(
             final_message = await stream.get_final_message()
 
         stop_reason = final_message.stop_reason
+        logger.info(
+            "agentic_loop round=%d stop_reason=%s tool_outputs_so_far=%d",
+            tool_round,
+            stop_reason,
+            len(all_tool_outputs),
+        )
 
         if stop_reason != "tool_use":
             final_text = "".join(tokens)
+
+            # Strip any reference section the LLM wrote despite the prompt saying not
+            # to — covers **References**, **Referências:**, --- [n], etc. The canonical
+            # block is appended below from format_reference_list; duplicates are ugly.
+            final_text = strip_llm_ref_tail(final_text)
 
             # Build deterministic citation registry from collected tool outputs (AC1/AC3/AC7/AC8)
             raw_refs = extract_references(all_tool_outputs)
@@ -449,7 +472,9 @@ async def _agentic_loop(
                 )
 
             if refs:
-                ref_block = "\n\n" + format_reference_list(refs)
+                # Render the canonical block in the user's language when detectable.
+                language = detect_narrative_language(final_text)
+                ref_block = "\n\n" + format_reference_list(refs, language=language)
                 await msg.stream_token(ref_block)
                 final_text += ref_block
                 # Attach structured references to message metadata for Epic 9 UI (AC7)

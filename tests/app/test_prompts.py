@@ -162,4 +162,7 @@ class TestDataFreshnessTransparency:
         """AC5: Prompt tells Claude that reference list is appended automatically."""
         result = get_system_prompt()
         assert "system appends the reference list automatically" in result
-        assert "Do not write one" in result
+        assert "Do NOT write a reference list yourself" in result
+        # Explicit i18n header forbid list — covers the variants the LLM has actually emitted
+        assert "**References**" in result
+        assert "**Referências**" in result
