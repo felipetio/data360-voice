@@ -1132,7 +1132,13 @@ class TestConfig:
         assert settings.conversation_history_limit == 10
 
     def test_config_claude_model_default(self, monkeypatch):
-        """Default claude_model is 'claude-haiku-4-5'."""
+        """Default claude_model is 'claude-sonnet-4-5'.
+
+        Upgraded from claude-haiku-4-5 after observing tool_use regression on
+        complex multi-tool queries (model emitted XML-style function_calls as
+        text tokens instead of tool_use content blocks, producing fabricated
+        data with no actual tool execution).
+        """
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
         monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
         monkeypatch.delenv("CLAUDE_MODEL", raising=False)
@@ -1140,7 +1146,7 @@ class TestConfig:
         from app.config import Settings
 
         s = Settings(_env_file=None)
-        assert s.claude_model == "claude-haiku-4-5"
+        assert s.claude_model == "claude-sonnet-4-5"
 
     def test_config_claude_model_from_env(self, monkeypatch):
         """CLAUDE_MODEL env var overrides the default."""
