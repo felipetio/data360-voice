@@ -262,9 +262,11 @@ def format_reference_list(references: list[dict[str, Any]], language: str = "en"
             years = ref.get("years", "")
 
             parts = [source]
-            if indicator_name:
+            if indicator_name and indicator_code:
+                parts.append(f'"{indicator_name}" ({indicator_code})')
+            elif indicator_name:
                 parts.append(f'"{indicator_name}"')
-            if indicator_code:
+            elif indicator_code:
                 parts.append(f"({indicator_code})")
             if years:
                 parts.append(years)
