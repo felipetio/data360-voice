@@ -150,34 +150,6 @@ client = _make_client()
 
 
 # ---------------------------------------------------------------------------
-# MCP lifecycle callbacks
-# ---------------------------------------------------------------------------
-
-
-@cl.on_mcp_connect
-async def on_mcp_connect(connection, session: ClientSession) -> None:
-    """Called when a Chainlit MCP connection is established (from the UI)."""
-    try:
-        result = await session.list_tools()
-        tools = _mcp_tools_to_anthropic(result.tools)
-        cl.user_session.set(_MCP_SESSION_KEY, session)
-        cl.user_session.set(_MCP_TOOLS_KEY, tools)
-        logger.info("MCP connected: %d tools available", len(tools))
-    except Exception:
-        logger.exception("Failed to list MCP tools on connect")
-        cl.user_session.set(_MCP_SESSION_KEY, session)
-        cl.user_session.set(_MCP_TOOLS_KEY, [])
-
-
-@cl.on_mcp_disconnect
-async def on_mcp_disconnect(name: str, session: ClientSession) -> None:
-    """Called when an MCP connection is torn down."""
-    cl.user_session.set(_MCP_SESSION_KEY, None)
-    cl.user_session.set(_MCP_TOOLS_KEY, [])
-    logger.info("MCP disconnected: %s", name)
-
-
-# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
