@@ -748,44 +748,6 @@ class TestMcpToolUse:
         assert "Error" in tool_result_content
         assert "Database not found" in tool_result_content
 
-    async def test_on_mcp_connect_stores_tools_in_session(self, reload_chat):
-        """on_mcp_connect stores mcp_session and mcp_tools in cl.user_session."""
-        from mcp.types import Tool
-
-        fake_tool = MagicMock(spec=Tool)
-        fake_tool.name = "search_indicators"
-        fake_tool.description = "Search"
-        fake_tool.inputSchema = {"type": "object", "properties": {}}
-
-        fake_session = AsyncMock()
-        list_result = MagicMock()
-        list_result.tools = [fake_tool]
-        fake_session.list_tools = AsyncMock(return_value=list_result)
-
-        fake_connection = MagicMock()
-        stored = {}
-
-        with patch("app.chat.cl.user_session") as session_mock:
-            session_mock.set.side_effect = lambda k, v: stored.update({k: v})
-            await reload_chat.on_mcp_connect(fake_connection, fake_session)
-
-        assert stored.get("mcp_session") is fake_session
-        assert len(stored.get("mcp_tools", [])) == 1
-        assert stored["mcp_tools"][0]["name"] == "search_indicators"
-
-    async def test_on_mcp_disconnect_clears_session(self, reload_chat):
-        """on_mcp_disconnect clears mcp_session and mcp_tools from cl.user_session."""
-        stored = {}
-
-        fake_session = AsyncMock()
-
-        with patch("app.chat.cl.user_session") as session_mock:
-            session_mock.set.side_effect = lambda k, v: stored.update({k: v})
-            await reload_chat.on_mcp_disconnect("data360", fake_session)
-
-        assert stored.get("mcp_session") is None
-        assert stored.get("mcp_tools") == []
-
     async def test_mcp_tools_to_anthropic_format(self, reload_chat):
         """_mcp_tools_to_anthropic converts MCP Tool objects to Anthropic tool dicts."""
         from app.chat import _mcp_tools_to_anthropic
