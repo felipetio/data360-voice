@@ -60,7 +60,7 @@ So that I can trust the information and trace it back to its source.
 
 ### Task 3: Update `app/chat.py` comments (AC: none, cleanup only)
 
-- [ ] Update the comment on the citation pipeline block in `_agentic_loop()`:
+- [x] Update the comment on the citation pipeline block in `_agentic_loop()`:
   - Change `# Build deterministic citation registry from collected tool outputs (AC1/AC3/AC7/AC8)` to reference Story 9.1 context
   - Change `# Attach structured references to message metadata for Epic 9 UI (AC7)` to reflect that metadata is for Story 9.2/9.3
 

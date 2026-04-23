@@ -434,14 +434,14 @@ async def _agentic_loop(
         if stop_reason != "tool_use":
             final_text = "".join(tokens)
 
-            # Build deterministic citation registry from collected tool outputs (AC1/AC3/AC7/AC8)
+            # Build deterministic Data Sources block from collected tool outputs (Story 9.1)
             raw_refs = extract_references(all_tool_outputs)
             if raw_refs:
                 refs = deduplicate_references(raw_refs)
                 ref_block = "\n\n" + format_reference_list(refs)
                 await msg.stream_token(ref_block)
                 final_text += ref_block
-                # Attach structured references to message metadata for Epic 9 UI (AC7)
+                # Attach structured references to message metadata for Story 9.2/9.3
                 msg.metadata = {"references": refs}
 
             return final_text
