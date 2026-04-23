@@ -296,7 +296,7 @@ class TestFormatReferenceList:
     """AC3/AC4/AC5/AC6: Reference list formatting."""
 
     def test_api_reference_format(self):
-        """AC3: API citation in IEEE-light format."""
+        """AC2: API citation in bullet-point format."""
         refs = [
             {
                 "id": 1,
@@ -309,14 +309,15 @@ class TestFormatReferenceList:
             }
         ]
         result = format_reference_list(refs)
-        assert "[1]" in result
+        assert "- " in result
+        assert "[1]" not in result
         assert "CO2 emissions, total (kt)" in result
         assert "EN_ATM_CO2E_KT" in result
         assert "World Development Indicators" in result
         assert "2015-2022" in result
 
     def test_document_reference_format(self):
-        """AC4: Document citation format."""
+        """AC3: Document citation in bullet-point format."""
         refs = [
             {
                 "id": 1,
@@ -332,7 +333,8 @@ class TestFormatReferenceList:
             }
         ]
         result = format_reference_list(refs)
-        assert "[1]" in result
+        assert "- " in result
+        assert "[1]" not in result
         assert "report.pdf" in result
 
     def test_empty_references_returns_empty_string(self):
@@ -340,7 +342,7 @@ class TestFormatReferenceList:
         assert format_reference_list([]) == ""
 
     def test_language_title_english(self):
-        """AC6: English title."""
+        """AC4: English title."""
         refs = [
             {
                 "id": 1,
@@ -353,10 +355,10 @@ class TestFormatReferenceList:
             }
         ]
         result = format_reference_list(refs, language="en")
-        assert "**References**" in result
+        assert "**Data Sources**" in result
 
     def test_language_title_portuguese(self):
-        """AC6: Portuguese title."""
+        """AC4: Portuguese title."""
         refs = [
             {
                 "id": 1,
@@ -369,10 +371,10 @@ class TestFormatReferenceList:
             }
         ]
         result = format_reference_list(refs, language="pt")
-        assert "**Referências**" in result
+        assert "**Fontes de Dados**" in result
 
     def test_language_title_spanish(self):
-        """AC6: Spanish title."""
+        """AC4: Spanish title."""
         refs = [
             {
                 "id": 1,
@@ -385,10 +387,10 @@ class TestFormatReferenceList:
             }
         ]
         result = format_reference_list(refs, language="es")
-        assert "**Referencias**" in result
+        assert "**Fuentes de Datos**" in result
 
     def test_language_title_fallback(self):
-        """AC6: Unknown language falls back to English."""
+        """AC4: Unknown language falls back to English."""
         refs = [
             {
                 "id": 1,
@@ -401,10 +403,10 @@ class TestFormatReferenceList:
             }
         ]
         result = format_reference_list(refs, language="xx")
-        assert "**References**" in result
+        assert "**Data Sources**" in result
 
     def test_multiple_references(self):
-        """Multiple refs formatted with sequential numbers."""
+        """Multiple refs formatted as bullet lines."""
         refs = [
             {
                 "id": 1,
@@ -426,8 +428,8 @@ class TestFormatReferenceList:
             },
         ]
         result = format_reference_list(refs)
-        assert "[1]" in result
-        assert "[2]" in result
+        bullet_lines = [line for line in result.split("\n") if line.startswith("- ")]
+        assert len(bullet_lines) == 2
 
 
 class TestParseTimePeriodYear:
