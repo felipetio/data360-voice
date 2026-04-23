@@ -56,7 +56,11 @@ def test_config_loads_with_valid_env(monkeypatch):
 
 
 def test_config_default_mcp_server_url(monkeypatch):
-    """MCP_SERVER_URL should default to http://localhost:8001 if not set."""
+    """MCP_SERVER_URL should default to http://localhost:8001/mcp if not set.
+
+    The /mcp suffix is required because FastMCP's streamable-http transport mounts
+    the JSON-RPC endpoint at /mcp, not at the server root.
+    """
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     monkeypatch.setenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/db")
     monkeypatch.delenv("MCP_SERVER_URL", raising=False)
@@ -65,4 +69,4 @@ def test_config_default_mcp_server_url(monkeypatch):
 
     # Pass _env_file=None so a local .env won't override the deleted var
     settings = Settings(_env_file=None)
-    assert settings.mcp_server_url == "http://localhost:8001"
+    assert settings.mcp_server_url == "http://localhost:8001/mcp"
