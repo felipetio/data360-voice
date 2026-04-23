@@ -1159,90 +1159,88 @@ So that I can verify correctness and catch regressions end-to-end.
 
 ---
 
-## Epic 9: Citation UI & Journalist Export
+## Epic 9: Data Provenance & Journalist Export
 
-Structured citation data from Epic 3's citation registry pipeline is rendered in the Chainlit UI with interactive references, copy-with-citation support, and source verification links. This epic transforms the raw citation data into a journalist-grade experience, directly addressing Data360 Challenge pillars 02 (Instant Visual Stories), 04 (Digital Passport for Facts), and 05 (Permanent Source Seals).
+The server deterministically appends a "Data Sources" block to every data-bearing response, built entirely from MCP tool response metadata. The LLM writes narrative only, with zero involvement in citation or source attribution. This replaces the original marker-based approach that failed due to LLM unreliability (see `epic-9-retrospective-pre-redesign.md`). Addresses Data360 Challenge pillars 04 (Digital Passport for Facts) and 05 (Permanent Source Seals).
 
-**FRs covered:** FR9 (publication-ready, enhanced), FR57, FR58, FR59
-**NFRs addressed:** NFR1 (responsive UI interactions)
+**FRs covered:** FR8, FR9, FR58, FR59
+**NFRs addressed:** None (server-side only, no UI interaction complexity)
 **Implementation order:** After Epic 3
-**Dependency:** Epic 3 Story 3.2 (Citation Registry Pipeline) must be complete, providing the `references: list[dict]` contract attached to Chainlit message metadata.
+**Dependency:** Epic 3 Story 3.2 (Citation Registry Pipeline) provides the extraction and deduplication pipeline (`extract_references`, `deduplicate_references`) used by this epic.
+**Supersedes:** Original Epic 9 (Citation UI & Journalist Export), reverted in PR #44. FR57 (interactive `[n]` markers) is dropped, replaced by deterministic server-side provenance.
 
-### Story 9.1: Citation Registry Rendering in Chat UI
+### Story 9.1: Server-side Data Sources Block
 
-As a journalist,
-I want citation markers in the chat response to be interactive and show source details,
-So that I can quickly verify and understand the source of each data claim without scrolling.
+As a user,
+I want to see exactly where the data in each response came from,
+So that I can trust the information and trace it back to its source.
 
 **Acceptance Criteria:**
 
-**Given** a chat response with `[n]` citation markers and a `references` metadata object from Epic 3
+**Given** a chat response where tool calls returned data with `CITATION_SOURCE` fields
 **When** the response is rendered in the Chainlit UI
-**Then** each `[n]` marker is rendered as a clickable/hoverable element (FR57)
-**And** hovering/clicking a marker shows a tooltip with: source name, indicator name, indicator code, year range, and database
-**And** the reference list block at the bottom of the response is styled distinctly from the narrative text (e.g., smaller font, border, or background)
-**And** reference entries in the list are visually numbered to match the `[n]` markers
+**Then** a "Data Sources" section is appended after the narrative as a bullet-point list
+**And** API sources show: source name, indicator name (if available), indicator code, year range
+**And** document sources show: filename, upload date, page/chunk
+**And** the section title adapts to the conversation language (en: "Data Sources", pt: "Fontes de Dados", es: "Fuentes de Datos", fr: "Sources de Donn\u00e9es", de: "Datenquellen")
 
-**Given** a response with no citations (clarification, no data found)
+**Given** a response with no tool calls or where all tool calls returned empty data
 **When** the response is rendered
-**Then** no reference block or interactive markers are shown
+**Then** no Data Sources section appears
 
-**Given** the tooltip content
-**When** displayed to the user
-**Then** document-type citations show: filename, upload date, page/chunk
-**And** API-type citations show: database name, indicator code, indicator name, year range
+**Given** multiple tool calls returning data from the same indicator and database
+**When** the Data Sources block is built
+**Then** duplicate sources are merged (deduplicated by database_id + indicator_code)
+**And** year ranges are collapsed into compact format (e.g., "2015-2022")
 
-### Story 9.2: Copy-with-Citations
+**Given** the system prompt
+**When** the LLM generates a response
+**Then** the prompt does NOT instruct the LLM to place `[n]` markers or generate any reference list
+**And** the prompt states that a Data Sources section is appended automatically
+
+**Implementation scope:**
+- Remove `[n]` marker instructions from `app/prompts.py` (CITATION MARKERS section)
+- Reformat `format_reference_list` in `app/citations.py`: bullet-point format, no `[n]` numbering
+- Rename titles from "References" to "Data Sources" across all 5 languages
+- Update `app/chat.py` comments (no logic changes, pipeline already works)
+- Update `tests/app/test_citations.py` format assertions
+
+### Story 9.2: Copy with Data Sources
 
 As a journalist,
-I want to copy a response and have the citations preserved in a format my newsroom uses,
-So that I can paste data claims directly into articles with proper attribution.
+I want to copy a response with its data sources preserved,
+So that I can paste it into articles with proper attribution.
 
 **Acceptance Criteria:**
 
-**Given** a chat response with citations
-**When** the user clicks a "Copy with citations" button
-**Then** the clipboard contains the narrative text with `[n]` markers preserved (FR58)
-**And** the reference list is appended at the bottom in the selected format
-**And** the default format is IEEE-light (matching Epic 3 fallback rendering)
+**Given** a chat response with a Data Sources block
+**When** the user clicks a "Copy" button
+**Then** the clipboard contains the full narrative text plus the Data Sources section
+**And** the text pastes cleanly as plain text into Google Docs, Word, or any text editor (FR58)
 
-**Given** the format selector
-**When** the user selects a citation format
-**Then** the following formats are available:
-  - **IEEE-light** (default): `[1] World Bank, "CO2 emissions, total (kt)," World Development Indicators (EN.ATM.CO2E.KT), 2015-2022.`
-  - **ABNT**: `[1] WORLD BANK. CO2 emissions, total (kt). World Development Indicators, EN.ATM.CO2E.KT. 2015-2022. Available at: https://data360.worldbank.org.`
-  - **APA**: `World Bank. (2015-2022). CO2 emissions, total (kt) [EN.ATM.CO2E.KT]. World Development Indicators. https://data360.worldbank.org`
-**And** the reference list title adapts to conversation language ("References", "Referências", "Referencias")
-
-**Given** a copied response
-**When** pasted into a document editor (Google Docs, Word, plain text)
-**Then** formatting is preserved as plain text with markers and reference list intact
+**Given** a response with no Data Sources
+**When** the user clicks Copy
+**Then** only the narrative text is copied
 
 ### Story 9.3: Source Verification Links
 
 As a journalist or editor,
-I want each citation to include a link that takes me to the original data source,
-So that I can verify any data claim in one click, fulfilling the "digital passport for facts" requirement.
+I want each data source to include a link to the original data,
+So that I can verify any data claim in one click.
 
 **Acceptance Criteria:**
 
-**Given** an API-type citation in the reference list
-**When** the user clicks a "Verify" link or icon next to the reference
-**Then** it opens the Data360 indicator page in a new tab (FR59)
-**And** the URL is constructed from the `database_id` and `indicator_code` in the citation registry
+**Given** an API-type source in the Data Sources block
+**When** rendered in the UI
+**Then** it includes a verification link to the Data360 indicator page (FR59)
 **And** the URL format follows: `https://data360.worldbank.org/en/indicator/{indicator_code}?database_id={database_id}`
 
-**Given** a document-type citation
-**When** the user clicks the citation
+**Given** a document-type source in the Data Sources block
+**When** rendered in the UI
 **Then** no external link is shown (uploaded documents are local, not publicly accessible)
-**And** instead, the tooltip shows the document filename and upload date for internal reference
+**And** the entry shows filename and upload date for internal reference
 
 **Given** the verification link
-**When** the target page loads
-**Then** the user can see the official World Bank data for the cited indicator
-**And** can independently confirm the data values referenced in the AI response
-
-**Given** the reference list rendering
-**When** verification links are present
-**Then** each link is visually indicated with a small external-link icon
-**And** links are accessible (proper aria labels, keyboard navigable)
+**When** clicked by the user
+**Then** it opens the Data360 indicator page in a new browser tab
+**And** the user can independently confirm the data values referenced in the AI response
