@@ -1,6 +1,6 @@
 # Story 9.1: Server-side Data Sources Block
 
-Status: in-progress
+Status: review
 
 ## Story
 
@@ -87,9 +87,9 @@ So that I can trust the information and trace it back to its source.
 
 ### Task 6: Full validation (AC: all)
 
-- [ ] Run: `uv run pytest -v` -- no regressions across the full suite
-- [ ] Run: `uv run ruff check . && uv run ruff format .` -- clean
-- [ ] Verify the pipeline end-to-end: `extract_references` -> `deduplicate_references` -> `format_reference_list` produces the expected bullet-point output with a realistic multi-tool-call fixture
+- [x] Run: `uv run pytest -v` -- no regressions across the full suite
+- [x] Run: `uv run ruff check . && uv run ruff format .` -- clean
+- [x] Verify the pipeline end-to-end: `extract_references` -> `deduplicate_references` -> `format_reference_list` produces the expected bullet-point output with a realistic multi-tool-call fixture
 
 ---
 
@@ -234,11 +234,28 @@ This story fully implements that lesson by removing ALL LLM citation involvement
 ## Dev Agent Record
 
 ### Agent Model Used
+Claude Opus 4.6
 
 ### Debug Log References
+- test_chat.py had an additional test (`test_system_prompt_instructs_citation_markers`) asserting `[1]` in SYSTEM_PROMPT, not listed in story tasks. Updated to verify Data Sources provenance instead.
+- Prompt wording adjusted to avoid `[n]` and "marker" even in prohibition context (prevents LLM priming per retrospective lesson).
 
 ### Completion Notes List
+- Renamed `_REFERENCE_TITLES` -> `_DATA_SOURCES_TITLES` with 5 localized titles
+- Rewrote `format_reference_list` to bullet-point format (no `[n]` numbering)
+- Replaced CITATION MARKERS section with DATA PROVENANCE in system prompt
+- Updated DOCUMENT_SEARCH_SECTION: removed step 4 from cross-referencing workflow, simplified DOCUMENT CITATION FORMAT
+- Updated chat.py comments to reference Story 9.1 and 9.2/9.3
+- Updated all test assertions in test_citations.py, test_prompts.py, and test_chat.py
+- Full suite: 338 passed, 0 failed; ruff clean
 
 ### File List
+- `app/citations.py` (modified) - renamed title dict, rewrote format function
+- `app/prompts.py` (modified) - replaced CITATION MARKERS with DATA PROVENANCE, updated DOCUMENT_SEARCH_SECTION
+- `app/chat.py` (modified) - comment-only changes
+- `tests/app/test_citations.py` (modified) - format assertion updates
+- `tests/app/test_prompts.py` (modified) - marker instruction assertion updates
+- `tests/app/test_chat.py` (modified) - updated citation marker test to data provenance
 
 ### Change Log
+- Story 9.1 implementation: reformat citations from [n] numbered to bullet-point Data Sources (2026-04-23)
