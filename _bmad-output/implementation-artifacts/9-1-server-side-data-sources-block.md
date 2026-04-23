@@ -259,3 +259,4 @@ Claude Opus 4.6
 
 ### Change Log
 - Story 9.1 implementation: reformat citations from [n] numbered to bullet-point Data Sources (2026-04-23)
+- Code review: addressed 1 patch finding (AC2 name+code grouping) before PR (2026-04-23)
